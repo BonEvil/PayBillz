@@ -7,6 +7,7 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
 from .forms import BillForm, CategoryForm, OccurrenceForm, PaymentForm, RuleFields, ScheduleForm
 from .models import Bill, Category, Occurrence, Payment, PaySchedule
+from .icons import ICON_CHOICES
 from .services import archive_bill, change_bill, payday_buckets, payday_income, sync_bill
 
 def _sync(through):
@@ -40,11 +41,20 @@ def dashboard(request):
     expected = current['expected'] if current else Decimal('0')
     paid = current['paid'] if current else Decimal('0')
     outstanding = current['outstanding'] if current else Decimal('0')
+    try:
+        period = max(0, min(int(request.GET.get('period', 0)), len(buckets) - 1))
+    except ValueError:
+        period = 0
+    selected = buckets[period] if buckets else None
+    if selected:
+        selected['remaining'] = selected['income'] - selected['paid'] - selected['outstanding']
+    previous_period = period - 1 if period else None
+    next_period = period + 1 if period + 1 < len(buckets) else None
     return render(request,'bills/dashboard.html',locals())
 
 def bill_list(request):
     bills = Bill.objects.select_related('category').all()
-    return render(request,'bills/bill_list.html',{'bills':bills})
+    return render(request,'bills/bill_list.html',{'bills':bills, 'schedules':PaySchedule.objects.select_related('category').all()})
 
 def bill_edit(request, pk=None):
     bill = get_object_or_404(Bill, pk=pk) if pk else None
@@ -53,7 +63,7 @@ def bill_edit(request, pk=None):
     if request.method == 'POST' and form.is_valid():
         change_bill(bill or form.instance, form)
         return redirect('bills:bill_list')
-    return render(request,'bills/form.html',{'form':form,'title':'Edit bill' if bill else 'New bill','cancel':'bills:bill_list'})
+    return render(request,'bills/form.html',{'form':form,'title':'Edit bill' if bill else 'New bill','cancel':'bills:bill_list', **icon_context()})
 
 def bill_archive(request, pk):
     bill = get_object_or_404(Bill, pk=pk)
@@ -63,7 +73,7 @@ def bill_archive(request, pk):
     return render(request,'bills/confirm.html',{'title':'Archive bill','question':f'Archive {bill.name}? Paid and missed history stays available.','cancel':'bills:bill_list'})
 
 def schedule_list(request):
-    return render(request, 'bills/schedule_list.html', {'schedules': PaySchedule.objects.all()})
+    return render(request, 'bills/schedule_list.html', {'schedules': PaySchedule.objects.select_related('category').all()})
 
 
 def schedule_edit(request, pk=None):
@@ -73,7 +83,7 @@ def schedule_edit(request, pk=None):
     if request.method == 'POST' and form.is_valid():
         form.save()
         return redirect('bills:dashboard')
-    return render(request,'bills/form.html',{'form':form,'title':'Edit pay schedule' if schedule else 'Add pay schedule','cancel':'bills:schedule'})
+    return render(request,'bills/form.html',{'form':form,'title':'Edit pay schedule' if schedule else 'Add pay schedule','cancel':'bills:schedule', **icon_context()})
 
 def schedule_delete(request, pk):
     schedule = get_object_or_404(PaySchedule, pk=pk)
@@ -93,7 +103,7 @@ def category_edit(request, pk=None):
     if request.method == 'POST' and form.is_valid():
         form.save()
         return redirect('bills:category_list')
-    return render(request, 'bills/form.html', {'form': form, 'title': 'Edit category' if category else 'Add category', 'cancel': 'bills:category_list'})
+    return render(request, 'bills/form.html', {'form': form, 'title': 'Edit category' if category else 'Add category', 'cancel': 'bills:category_list', **icon_context()})
 
 
 def occurrence_edit(request, pk):
@@ -133,7 +143,7 @@ def payment_edit(request, pk):
         except IntegrityError:
             return render(request,'bills/message.html',{'title':'Payment changed','message':'This payment changed. Reload it before saving.'},status=409)
         return redirect('bills:dashboard')
-    return render(request,'bills/form.html',{'form':form,'title':f'{"Correct payment" if payment else "Complete bill"}: {row.name} ({row.due_date})','cancel':'bills:dashboard'})
+    return render(request,'bills/form.html',{'form':form,'title':f'{"Correct payment" if payment else "Complete bill"}: {row.name} ({row.due_date})','cancel':'bills:dashboard', 'submit_label':'Save correction' if payment else 'Mark complete'})
 
 def payment_undo(request, pk):
     row = get_object_or_404(Occurrence, pk=pk)
@@ -170,3 +180,7 @@ def history(request):
         end = ''
     rows = rows.order_by('-due_date','-pk')[:500]
     return render(request,'bills/history.html',{'rows':rows,'q':q,'status':status,'start':start,'end':end})
+
+
+def icon_context():
+    return {'icon_choices': ICON_CHOICES, 'category_icons': {str(c.pk): c.icon for c in Category.objects.all()}}

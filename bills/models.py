@@ -2,8 +2,10 @@ from django.db import models
 from django.core.validators import MinValueValidator
 from django.core.validators import URLValidator
 from decimal import Decimal
+from .icons import ICON_CHOICES
 
 class Category(models.Model):
+    icon = models.CharField(max_length=32, choices=ICON_CHOICES, default="receipt")
     name = models.CharField(max_length=100)
     subcategory = models.CharField(max_length=100, blank=True)
 
@@ -15,6 +17,12 @@ class Category(models.Model):
         return f'{self.name} → {self.subcategory}' if self.subcategory else self.name
 
 class Bill(models.Model):
+    icon_override = models.CharField(max_length=32, choices=ICON_CHOICES, blank=True)
+
+    @property
+    def display_icon(self):
+        return self.icon_override or (self.category.icon if self.category_id else "receipt")
+
     source_reference = models.CharField(max_length=200, null=True, blank=True, unique=True, editable=False)
     category = models.ForeignKey(Category, null=True, blank=True, on_delete=models.PROTECT, related_name='bills')
     name = models.CharField(max_length=160)
@@ -35,6 +43,13 @@ class Bill(models.Model):
         return self.name
 
 class PaySchedule(models.Model):
+    category = models.ForeignKey(Category, null=True, blank=True, on_delete=models.PROTECT, related_name="income_schedules")
+    icon_override = models.CharField(max_length=32, choices=ICON_CHOICES, blank=True)
+
+    @property
+    def display_icon(self):
+        return self.icon_override or (self.category.icon if self.category_id else "wallet")
+
     name = models.CharField(max_length=160, default='Pay schedule')
     expected_amount = models.DecimalField(max_digits=12, decimal_places=2, default=0, validators=[MinValueValidator(Decimal('0'))])
 

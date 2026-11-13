@@ -234,6 +234,11 @@ class RequirementTests(TestCase):
         self.assertTrue(all(row.due_date < self.today for row in response.context['overdue']))
 
 class MultipleIncomeAndCategoryTests(TestCase):
+    @classmethod
+    def setUpTestData(cls):
+        from .models import Category
+        Category.objects.all().delete()
+
     def test_named_schedules_create_edit_without_replacing_others(self):
         payload = {'name': 'Salary', 'expected_amount': '2100.25', 'anchor_date': '2026-01-15', 'kind': 'mid_month_end'}
         self.assertEqual(self.client.post(reverse('bills:schedule_new'), payload).status_code, 302)
@@ -286,6 +291,11 @@ class MultipleIncomeAndCategoryTests(TestCase):
         self.assertEqual(self.client.post(reverse('bills:bill_new'), {'name':'Invalid','amount':'30','start_date':'2026-11-15','kind':'monthly','category':999999}).status_code,200)
 
 class InlineCategoryTests(TestCase):
+    @classmethod
+    def setUpTestData(cls):
+        from .models import Category
+        Category.objects.all().delete()
+
     def payload(self, **extra):
         return {'name':'Electric bill','amount':'40','start_date':'2026-11-15','kind':'monthly',
                 'add_category':'on','new_category':' Utility ','new_subcategory':' Electric ', **extra}
@@ -359,6 +369,11 @@ class PWATests(TestCase):
         self.assertEqual(self.client.get('/pwa/../../paybillz/settings.py').status_code,404)
 
 class BillImportTests(TestCase):
+    @classmethod
+    def setUpTestData(cls):
+        from .models import Category
+        Category.objects.all().delete()
+
     def run_import(self, rows, apply=False):
         import json
         import tempfile
@@ -437,3 +452,66 @@ class ZeroCompletionTests(TestCase):
         self.bill.refresh_from_db()
         self.assertEqual(self.bill.amount,0)
         self.assertEqual(self.client.post(url,{'amount':'-1','paid_date':'2026-11-15','payment_revision':1}).status_code,200)
+
+class GraphiteIconTests(TestCase):
+    def test_starter_categories_and_live_inheritance(self):
+        from .models import Category
+        category = Category.objects.get(name='Utilities', subcategory='Electricity')
+        self.assertEqual(category.icon, 'bolt')
+        bill = Bill.objects.create(name='Power', amount=0, start_date=date(2026,11,15), recurrence=RULE, category=category)
+        other = Bill.objects.create(name='Custom power', amount=15, start_date=date(2026,11,15), recurrence=RULE, category=category, icon_override='home')
+        sync_bill(bill, date(2026,12,15), date(2026,11,13))
+        occurrence = bill.occurrences.first()
+        Payment.objects.create(occurrence=occurrence, amount=0, paid_date=date(2026,11,15))
+        before = list(bill.occurrences.values('pk','original_due','due_date','expected','payment_revision'))
+        self.assertEqual(bill.display_icon, 'bolt')
+        response = self.client.post(reverse('bills:category_edit',args=[category.pk]), {'name':category.name,'subcategory':category.subcategory,'icon':'flame'})
+        self.assertEqual(response.status_code,302)
+        bill.refresh_from_db(); other.refresh_from_db()
+        self.assertEqual(bill.display_icon, 'flame')
+        self.assertEqual(other.display_icon, 'home')
+        self.assertEqual(before, list(bill.occurrences.values('pk','original_due','due_date','expected','payment_revision')))
+        self.assertEqual(Payment.objects.get(occurrence=occurrence).amount,0)
+
+    def test_bill_override_reset_and_invalid_icons(self):
+        from .models import Category
+        category = Category.objects.get(name='Utilities',subcategory='Internet')
+        payload = {'name':'Fiber','amount':'0','start_date':'2026-11-15','kind':'monthly','category':category.pk,'icon_override':'phone'}
+        self.assertEqual(self.client.post(reverse('bills:bill_new'),payload).status_code,302)
+        bill = Bill.objects.get(name='Fiber')
+        self.assertEqual(bill.display_icon,'phone')
+        self.assertTrue(bill.occurrences.exists())
+        url = reverse('bills:bill_edit',args=[bill.pk])
+        self.assertEqual(self.client.post(url,{**payload,'icon_override':''}).status_code,302)
+        bill.refresh_from_db();self.assertEqual(bill.display_icon,'wifi')
+        self.assertEqual(self.client.post(url,{**payload,'icon_override':'<script>alert(1)</script>'}).status_code,200)
+        bill.refresh_from_db();self.assertEqual(bill.display_icon,'wifi')
+
+    def test_inline_category_icon_and_income_override(self):
+        from .models import Category
+        payload = {'name':'Book club','amount':'4','start_date':'2026-11-15','kind':'monthly','add_category':'on','new_category':'Reading','new_category_icon':'book'}
+        self.assertEqual(self.client.post(reverse('bills:bill_new'),payload).status_code,302)
+        bill = Bill.objects.get(name='Book club')
+        self.assertEqual(bill.display_icon,'book')
+        salary = Category.objects.get(name='Income',subcategory='Salary')
+        payload = {'name':'Work','category':salary.pk,'icon_override':'briefcase','expected_amount':'2500','anchor_date':'2026-11-15','kind':'mid_month_end'}
+        self.assertEqual(self.client.post(reverse('bills:schedule_new'),payload).status_code,302)
+        schedule=PaySchedule.objects.get(name='Work')
+        self.assertEqual(schedule.display_icon,'briefcase')
+        self.assertEqual(self.client.post(reverse('bills:schedule_edit',args=[schedule.pk]),{**payload,'icon_override':''}).status_code,302)
+        schedule.refresh_from_db();self.assertEqual(schedule.display_icon,'wallet')
+        response=self.client.get(reverse('bills:bill_list'))
+        self.assertContains(response,'Book club');self.assertContains(response,'Work')
+        self.assertContains(response,'data-type="income"')
+
+    def test_dashboard_period_navigation_and_template_safety(self):
+        PaySchedule.objects.create(name='Paycheck', expected_amount=1000, anchor_date=date(2026,11,1),recurrence={'kind':'monthly_dates','days':[15,31]})
+        Bill.objects.create(name='<script>bad</script>',notes='<img src=x onerror=alert(1)>',amount=0,start_date=date(2026,11,15),recurrence={'kind':'interval','unit':'months','every':1})
+        with patch('bills.views.timezone.localdate',return_value=date(2026,11,16)):
+            response=self.client.get('/',{'period':1})
+            self.assertEqual(response.context['selected']['start'],date(2026,11,30))
+            response=self.client.get('/',{'period':'bad'})
+            self.assertContains(response,'&lt;script&gt;bad&lt;/script&gt;')
+            self.assertContains(response,'&lt;img src=x onerror=alert(1)&gt;')
+            self.assertNotContains(response,'<script>bad</script>')
+        self.assertEqual(self.client.get('/static/bills/app.js').status_code,200)

@@ -13,6 +13,7 @@ urlpatterns = [
     path('apple-touch-icon.png', pwa.asset, {'filename': 'icon-192.png', 'content_type': 'image/png'}, name='apple_icon'),
     path('favicon.ico', pwa.asset, {'filename': 'icon-192.png', 'content_type': 'image/png'}, name='favicon'),
     path('static/bills/site.css', lambda request: static_serve(request, 'bills/site.css', insecure=True), name='site_css'),
+    path('static/bills/app.js', lambda request: static_serve(request, 'bills/app.js', insecure=True), name='app_js'),
     path('', views.dashboard, name='dashboard'),
     path('schedule/', views.schedule_list, name='schedule'),
     path('schedule/new/', views.schedule_edit, name='schedule_new'),

@@ -1,5 +1,5 @@
 // Only public app assets are cached. Bills, forms and payment requests stay online.
-const CACHE = 'paybillz-public-v1';
+const CACHE = 'paybillz-public-v2';
 const ASSETS = ['/pwa/offline.html', '/pwa/icon-192.png', '/pwa/icon-512.png'];
 self.addEventListener('install', event => {
   event.waitUntil(caches.open(CACHE).then(cache => cache.addAll(ASSETS)).then(() => self.skipWaiting()));

@@ -5,6 +5,7 @@ from django.db import transaction
 from django.core.exceptions import ValidationError
 from .models import Bill, Category, Occurrence, Payment, PaySchedule
 from paybillz.recurrence import validate_rule
+from .icons import ICON_CHOICES, suggested_icon
 
 PRESETS = {
     'weekly': {'kind':'interval','unit':'weeks','every':1},
@@ -71,9 +72,11 @@ class BillForm(RuleFields, forms.ModelForm):
     new_category = forms.CharField(max_length=100, required=False, label='New category', help_text='For example: Utility or Credit card.')
     new_subcategory = forms.CharField(max_length=100, required=False, label='New subcategory (optional)', help_text='For example: Electric or Visa. Saved for reuse on other bills.')
 
+    new_category_icon = forms.ChoiceField(choices=[("", "Automatic icon")] + ICON_CHOICES, required=False, label="New category icon")
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.order_fields(['name', 'category', 'add_category', 'new_category', 'new_subcategory', 'amount', 'start_date'])
+        self.order_fields(['name', 'category', 'add_category', 'new_category', 'new_subcategory', 'new_category_icon', 'icon_override', 'amount', 'start_date'])
 
     def clean(self):
         data = super().clean()
@@ -83,9 +86,10 @@ class BillForm(RuleFields, forms.ModelForm):
 
     class Meta:
         model = Bill
-        fields = ['name','category','amount','start_date','payment_link','notes']
+        fields = ['name','category','icon_override','amount','start_date','payment_link','notes']
         widgets = {'start_date': forms.DateInput(attrs={'type':'date'})}
-        labels = {'start_date':'First due date', 'amount':'Expected amount'}
+        labels = {'start_date':'First due date', 'amount':'Expected amount', 'icon_override':'Transaction icon'}
+        help_texts = {'icon_override':'Use the category icon, or choose an override for this bill and its recurring entries.'}
 
     def clean_payment_link(self):
         value = self.cleaned_data['payment_link'].strip()
@@ -101,7 +105,7 @@ class BillForm(RuleFields, forms.ModelForm):
             subcategory = self.cleaned_data.get('new_subcategory', '')
             category = Category.objects.filter(name__iexact=name, subcategory__iexact=subcategory).first()
             if category is None:
-                category, _ = Category.objects.get_or_create(name=name, subcategory=subcategory)
+                category, _ = Category.objects.get_or_create(name=name, subcategory=subcategory, defaults={"icon": self.cleaned_data.get("new_category_icon") or suggested_icon(name, subcategory)})
             bill.category = category
         bill.recurrence = self.cleaned_data['rule']
         if commit: bill.save()
@@ -110,9 +114,9 @@ class BillForm(RuleFields, forms.ModelForm):
 class ScheduleForm(RuleFields, forms.ModelForm):
     class Meta:
         model = PaySchedule
-        fields = ['name', 'expected_amount', 'anchor_date']
+        fields = ['name', 'category', 'icon_override', 'expected_amount', 'anchor_date']
         widgets = {'anchor_date': forms.DateInput(attrs={'type':'date'})}
-        labels = {'anchor_date':'First payday to include', 'expected_amount':'Expected amount per payday'}
+        labels = {'anchor_date':'First payday to include', 'expected_amount':'Expected amount per payday', 'icon_override':'Transaction icon'}
 
     def clean(self):
         data = super().clean()
@@ -127,9 +131,14 @@ class ScheduleForm(RuleFields, forms.ModelForm):
         return schedule
 
 class CategoryForm(forms.ModelForm):
+    icon = forms.ChoiceField(choices=ICON_CHOICES, initial="receipt", required=False)
+
+    def clean_icon(self):
+        return self.cleaned_data.get("icon") or (self.instance.icon if self.instance.pk else suggested_icon(self.cleaned_data.get("name", ""), self.cleaned_data.get("subcategory", "")))
+
     class Meta:
         model = Category
-        fields = ['name', 'subcategory']
+        fields = ['name', 'subcategory', 'icon']
         labels = {'name': 'Category', 'subcategory': 'Subcategory (optional)'}
 
     def clean(self):
