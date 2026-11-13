@@ -89,7 +89,7 @@ Updates back up before migrations and roll back failed migrations. Uninstall pre
 
 Use **Pay schedules → Add pay schedule** for each income source. Give each a name, expected amount per payday, first included payday, and recurrence. The 15th/last-day preset handles February and shorter months automatically; custom monthly dates accept values such as `5, 20, last`. Interval, weekday, and ordinal weekday rules remain available.
 
-All schedules form one combined timeline: a bucket starts on a payday and ends the day before the next payday from any schedule. Income arriving on the same day is added together. Each bill appears in only one bucket. Expected income is a projection, not a bank balance. Editing or removing schedules recalculates buckets without deleting bills or payment history. Existing schedules migrate with the name “Pay schedule” and an expected amount of $0; edit these values after updating.
+All schedules form one combined timeline: a bucket starts on a payday and ends the day before the next payday from any schedule. Income arriving on the same day is added together. Each bill appears in only one bucket. Expected income is a projection, not a bank balance. Editing or archiving schedules recalculates buckets without deleting bills or completed income history. Existing schedules migrate with the name “Pay schedule” and an expected amount of $0; edit these values after updating.
 
 Use **Categories** to create reusable category/subcategory pairs such as Utility → Electric or Credit card → Visa, then select one on any bill. You can also check **Add a new category** directly on the bill form, enter a category and optional subcategory, and save both together. Matching existing categories are reused; invalid bill submissions preserve your input without creating categories. The subcategory is optional. Editing a category updates its label across bills, dashboard, and history without changing recorded payment amounts or dates.
 
@@ -101,11 +101,11 @@ Repeated source references are skipped without overwriting edits. Preview does n
 
 ## Graphite interface and icons
 
-PayBillz uses a compact Graphite dark theme with mint action buttons, a persistent navigation sidebar, and separate transaction names, category labels, and notes. **Transactions** lists bills and expected income together, with All / Expenses / Income filters. Income remains a pay schedule projection; it is not a recorded bank deposit. **Overview** provides pay-period navigation and a completion side panel. All completion links still work as ordinary forms without JavaScript.
+PayBillz uses a compact Graphite dark theme with mint action buttons, a persistent navigation sidebar, and separate transaction names, category labels, and notes. **Transactions** lists bills and expected income together, with All / Expenses / Income filters. Income can be completed with its actual amount and received date, using the same controls as bills. **Overview** provides pay-period navigation and a completion side panel. All completion links still work as ordinary forms without JavaScript.
 
 Starter categories include utilities, housing, credit cards, insurance, transport, health, groceries, subscriptions, and salary. Each category has an editable default icon. Click a transaction's icon or use **Edit → Transaction icon** to open the searchable picker. Choosing an icon overrides the category for that recurring bill or income schedule. **Use category icon** clears the override. Changing a category icon updates entries that inherit it and leaves explicit overrides intact. Categories can still be created directly while adding a bill, now with an optional icon. All icons are bundled locally.
 
-The upgrade adds icons and starter categories without changing existing bill amounts, dates, recurrence rules, payments, or pay schedules. The after-payments figure subtracts actual recorded payments and expected unpaid bills from expected income; it is a plan, not a bank balance.
+The upgrade adds icons and starter categories without changing existing bill amounts, dates, recurrence rules, payments, or pay schedules. The after-income-and-bills figure adds actual received income and expected pending income, then subtracts actual paid expenses and expected unpaid expenses; it is a plan, not a bank balance.
 
 Transaction rows show the earliest outstanding bill due date (including overdue bills and date overrides), or the next payday for income. Completed dates are skipped; archived bills only show obligations already recorded.
 
@@ -118,3 +118,11 @@ The icon picker includes nearly 300 bundled line icons. Use **Browse category** 
 `paybillz open` (also used by the Omarchy launcher) starts the server and a dedicated Chromium app profile, then watches its Hyprland window. Closing that window stops the server and closes the dedicated browser session, including any extra windows opened within that session. Ordinary browser windows are unaffected. The profile is stored under the PayBillz installation home as `webapp-profile`. Run `paybillz install-webapp` once to refresh an older launcher.
 
 For intentionally persistent server access, use `paybillz start` and open the local URL in your regular browser; stop it with `paybillz stop`. The browser-only fallback on systems without Omarchy keeps this manual lifecycle.
+
+## Completing income
+
+Income and bills appear together by scheduled date in the overview and Transactions list. Use **Complete** on an income row, enter the **Amount received** and **Received date**, then choose **Mark complete**. For example, a paycheck scheduled for Sunday, November 15 can be recorded as received Friday, November 13. The scheduled date stays November 15, its paycheck bucket stays unchanged, and the next payday remains November 30.
+
+History shows the scheduled date plus the actual received amount/date. **Correct** updates a completion; **Undo** reopens it. Repeated or stale submissions cannot create another completion. Recording an early or late receipt never shifts the recurring schedule. Income totals distinguish received and pending amounts; actual income is never included in expense-paid totals. Existing pay schedules produce pending income occurrences from their configured first included payday; the upgrade does not invent received-income records.
+
+Editing a pay schedule preserves completed and past income records. Archiving it stops future unpaid projections and removes it from future bucket boundaries, while retaining its history.

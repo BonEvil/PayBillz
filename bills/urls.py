@@ -26,6 +26,7 @@ urlpatterns = [
     path('bills/new/', views.bill_edit, name='bill_new'),
     path('bills/<int:pk>/edit/', views.bill_edit, name='bill_edit'),
     path('bills/<int:pk>/archive/', views.bill_archive, name='bill_archive'),
+    path('transactions/<str:kind>/<int:pk>/complete/', views.transaction_complete, name='transaction_complete'),
     path('occurrences/<int:pk>/edit/', views.occurrence_edit, name='occurrence_edit'),
     path('occurrences/<int:pk>/pay/', views.payment_edit, name='payment_edit'),
     path('occurrences/<int:pk>/undo/', views.payment_undo, name='payment_undo'),

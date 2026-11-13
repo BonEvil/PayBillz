@@ -59,7 +59,7 @@ class BillFlowTests(TestCase):
         self.assertEqual(response.context['outstanding'],Decimal('200.00'))
         self.assertEqual(len(response.context['overdue']),1)
         self.assertTrue(response.context['overdue'][0].is_overdue)
-        self.assertEqual({x.original_due for x in response.context['rows']},{date(2026,11,13),date(2026,11,20)})
+        self.assertEqual({x.original_due for x in response.context['rows'] if not x.is_income},{date(2026,11,13),date(2026,11,20)})
 
     def test_payment_correction_undo_and_duplicate_constraint(self):
         sync_bill(self.bill,self.today,self.today)
@@ -272,7 +272,7 @@ class MultipleIncomeAndCategoryTests(TestCase):
         buckets = response.context['buckets']
         self.assertEqual([(b['start'].day,b['end'].day) for b in buckets], [(15,21),(22,28),(29,29),(30,5)])
         self.assertEqual([b['income'] for b in buckets], [1250,250,250,1000])
-        ids = [row.pk for bucket in buckets for row in bucket['rows']]
+        ids = [row.pk for bucket in buckets for row in bucket['rows'] if not row.is_income]
         self.assertEqual(len(ids), 5)
         self.assertEqual(len(set(ids)), 5)
 
@@ -574,3 +574,102 @@ class ExpandedIconLibraryTests(TestCase):
         self.assertContains(response,'id="icon-group"')
         self.assertContains(response,'data-icon-value="paw-print"')
         self.assertContains(response,'data-icon-value="tooth"')
+
+class IncomeCompletionTests(TestCase):
+    def setUp(self):
+        self.today=date(2026,11,13)
+        self.schedule=PaySchedule.objects.create(name='Salary',expected_amount=1000,anchor_date=date(2026,11,15),recurrence={'kind':'monthly_dates','days':[15,31]})
+        self.bill=Bill.objects.create(name='Electric',amount=100,start_date=date(2026,11,16),recurrence={'kind':'interval','unit':'months','every':1})
+        from .services import sync_schedule
+        sync_schedule(self.schedule,date(2026,12,31),self.today)
+        sync_bill(self.bill,date(2026,12,31),self.today)
+        self.row=self.schedule.occurrences.get(original_due=date(2026,11,15))
+        self.url=reverse('bills:payment_edit',args=[self.row.pk])
+
+    def complete(self,amount='980',day='2026-11-13',revision=0):
+        return self.client.post(self.url,{'amount':amount,'paid_date':day,'payment_revision':revision})
+
+    def test_sunday_payday_received_friday_keeps_schedule_and_bucket(self):
+        from .services import payday_buckets,bill_due_date
+        bounds=payday_buckets(self.today)
+        form=self.client.get(self.url).context['form']
+        self.assertEqual(form.fields['amount'].label,'Amount received')
+        self.assertEqual(form.fields['paid_date'].label,'Received date')
+        self.assertEqual(self.complete().status_code,302)
+        self.row.refresh_from_db();self.schedule.refresh_from_db()
+        self.assertEqual(self.row.payment.paid_date,self.today)
+        self.assertEqual(self.row.original_due,date(2026,11,15))
+        self.assertEqual(self.row.due_date,date(2026,11,15))
+        self.assertEqual(self.schedule.expected_amount,1000)
+        self.assertEqual(self.schedule.recurrence,{'kind':'monthly_dates','days':[15,31]})
+        self.assertEqual(payday_buckets(self.today),bounds)
+        self.assertEqual(bill_due_date(self.schedule),date(2026,11,30))
+        with patch('bills.views.timezone.localdate',return_value=self.today):
+            response=self.client.get('/')
+        bucket=response.context['selected']
+        self.assertEqual([r.is_income for r in bucket['rows']],[True,False])
+        self.assertEqual((bucket['income'],bucket['received'],bucket['pending_income']),(1000,980,0))
+        self.assertEqual((bucket['paid'],bucket['outstanding'],bucket['remaining']),(0,100,880))
+        self.assertNotContains(response,'class="income-strip"')
+        history=self.client.get(reverse('bills:history'),{'q':'Salary','status':'paid'})
+        self.assertContains(history,'$980.00 received')
+        self.assertContains(history,'Nov 13, 2026')
+        self.assertContains(history,'datetime="2026-11-15"')
+        self.assertTrue(all(row.is_income for row in history.context['rows']))
+
+    def test_correction_zero_duplicate_and_undo(self):
+        self.assertEqual(self.complete(amount='0').status_code,302)
+        self.assertEqual(self.complete(amount='1000').status_code,409)
+        self.assertEqual(self.complete(amount='1025',day='2026-11-14',revision=1).status_code,302)
+        self.assertEqual(Payment.objects.filter(occurrence=self.row).count(),1)
+        self.row.refresh_from_db()
+        self.assertEqual((self.row.payment.amount,self.row.payment.paid_date),(1025,date(2026,11,14)))
+        undo=reverse('bills:payment_undo',args=[self.row.pk])
+        self.assertEqual(self.client.post(undo,{'payment_revision':1}).status_code,409)
+        self.assertEqual(self.client.post(undo,{'payment_revision':2}).status_code,302)
+        self.assertFalse(Payment.objects.filter(occurrence=self.row).exists())
+        from .services import bill_due_date
+        self.assertEqual(bill_due_date(self.schedule),date(2026,11,15))
+        self.assertEqual(self.complete(amount='-1',revision=3).status_code,200)
+        self.assertFalse(Payment.objects.filter(occurrence=self.row).exists())
+
+    def test_paid_income_survives_edit_and_archive(self):
+        self.complete()
+        payload={'name':'Renamed income','expected_amount':'1200','anchor_date':'2026-11-15','kind':'weekly'}
+        with patch('bills.views.timezone.localdate',return_value=self.today),patch('bills.services.timezone.localdate',return_value=self.today):
+            self.assertEqual(self.client.post(reverse('bills:schedule_edit',args=[self.schedule.pk]),payload).status_code,302)
+            self.assertEqual(self.client.post(reverse('bills:schedule_delete',args=[self.schedule.pk])).status_code,302)
+        self.row.refresh_from_db();self.schedule.refresh_from_db()
+        self.assertTrue(self.schedule.archived)
+        self.assertEqual((self.row.name,self.row.expected,self.row.payment.amount),('Salary',1000,980))
+        self.assertFalse(self.schedule.occurrences.filter(payment__isnull=True,original_due__gt=self.today).exists())
+        self.assertContains(self.client.get(reverse('bills:history'),{'q':'Salary','status':'paid'}),'$980.00 received')
+
+    def test_one_mixed_list_and_completion_entrypoint(self):
+        before=Occurrence.objects.count()
+        response=self.client.get(reverse('bills:bill_list'))
+        self.assertEqual([item['kind'] for item in response.context['transactions']],['income','expense'])
+        self.assertEqual(Occurrence.objects.count(),before)
+        url=reverse('bills:transaction_complete',args=['income',self.schedule.pk])
+        response=self.client.get(url,follow=True)
+        self.assertContains(response,'Received date')
+        self.assertContains(response,'Complete income: Salary')
+        self.assertEqual(self.client.post(url).status_code,405)
+        self.assertEqual(self.client.get(reverse('bills:transaction_complete',args=['unknown',self.schedule.pk])).status_code,404)
+
+    def test_source_and_income_uniqueness_constraints(self):
+        from django.db import IntegrityError,transaction
+        for fields in [dict(),{'bill':self.bill,'pay_schedule':self.schedule},{'pay_schedule':self.schedule}]:
+            with self.assertRaises(IntegrityError),transaction.atomic():
+                Occurrence.objects.create(**fields,original_due=date(2026,11,15),due_date=date(2026,11,15),name='Invalid',expected=1)
+
+    def test_income_and_expense_totals_use_actuals_once(self):
+        self.complete(amount='1050')
+        bill_row=self.bill.occurrences.get(original_due=date(2026,11,16))
+        Payment.objects.create(occurrence=bill_row,amount=125,paid_date=self.today)
+        with patch('bills.views.timezone.localdate',return_value=self.today):
+            bucket=self.client.get('/').context['selected']
+        self.assertEqual((bucket['received'],bucket['paid'],bucket['outstanding'],bucket['remaining']),(1050,125,0,925))
+        from .services import sync_schedule
+        sync_schedule(self.schedule,date(2027,2,28),self.today)
+        self.assertEqual(self.schedule.occurrences.filter(original_due=date(2026,11,15)).count(),1)
