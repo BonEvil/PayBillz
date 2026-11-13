@@ -58,6 +58,7 @@ class BillFlowTests(TestCase):
         self.assertEqual(response.context['expected'],Decimal('200.00'))
         self.assertEqual(response.context['outstanding'],Decimal('200.00'))
         self.assertEqual(len(response.context['overdue']),1)
+        self.assertTrue(response.context['overdue'][0].is_overdue)
         self.assertEqual({x.original_due for x in response.context['rows']},{date(2026,11,13),date(2026,11,20)})
 
     def test_payment_correction_undo_and_duplicate_constraint(self):

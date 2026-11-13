@@ -30,6 +30,8 @@ def dashboard(request):
         overdue = list(Occurrence.objects.filter(due_date__lt=min(today, bounds[0][0]), payment__isnull=True).select_related('bill'))
     else:
         overdue = []
+    for row in overdue:
+        row.is_overdue = True
     cycle = bool(bounds)
     current = buckets[0] if buckets else None
     rows = current['rows'] if current else []
