@@ -2,7 +2,7 @@ from datetime import date
 from decimal import Decimal
 from django import forms
 from django.core.exceptions import ValidationError
-from .models import Bill, Occurrence, Payment, PaySchedule
+from .models import Bill, Category, Occurrence, Payment, PaySchedule
 from paybillz.recurrence import validate_rule
 
 PRESETS = {
@@ -11,10 +11,11 @@ PRESETS = {
     'monthly': {'kind':'interval','unit':'months','every':1},
     'quarterly': {'kind':'interval','unit':'months','every':3},
     'annually': {'kind':'interval','unit':'years','every':1},
+    'mid_month_end': {'kind':'monthly_dates','days':[15,31]},
     'twice_monthly': {'kind':'monthly_dates','days':[1,15]},
     'last_weekday': {'kind':'ordinal_weekday','ordinal':-1,'weekday':4},
 }
-KIND_CHOICES = [('once','One time'), ('weekly','Weekly'), ('fortnightly','Every two weeks'), ('monthly','Monthly'), ('quarterly','Quarterly'), ('annually','Annually'), ('twice_monthly','Twice monthly (1st and 15th)'), ('last_weekday','Last chosen weekday each month'), ('interval','Custom interval'), ('weekdays','Selected weekdays'), ('monthly_dates','Selected dates each month'), ('selected_months','Selected months'), ('ordinal_weekday','Nth weekday each month')]
+KIND_CHOICES = [('once','One time'), ('weekly','Weekly'), ('fortnightly','Every two weeks'), ('monthly','Monthly'), ('quarterly','Quarterly'), ('annually','Annually'), ('twice_monthly','Twice monthly (1st and 15th)'), ('mid_month_end','Twice monthly (15th and last day)'), ('last_weekday','Last chosen weekday each month'), ('interval','Custom interval'), ('weekdays','Selected weekdays'), ('monthly_dates','Selected dates each month'), ('selected_months','Selected months'), ('ordinal_weekday','Nth weekday each month')]
 WEEKDAYS = [('0','Monday'), ('1','Tuesday'), ('2','Wednesday'), ('3','Thursday'), ('4','Friday'), ('5','Saturday'), ('6','Sunday')]
 MONTHS = [(str(i), date(2000,i,1).strftime('%B')) for i in range(1,13)]
 
@@ -23,7 +24,7 @@ class RuleFields(forms.Form):
     every = forms.IntegerField(min_value=1, initial=1, required=False, label='Every')
     unit = forms.ChoiceField(choices=[('days','Days'),('weeks','Weeks'),('months','Months'),('years','Years')], required=False)
     weekdays = forms.MultipleChoiceField(choices=WEEKDAYS, widget=forms.CheckboxSelectMultiple, required=False)
-    monthly_days = forms.CharField(required=False, label='Dates of month', help_text='Comma separated dates, 1–31. Dates absent in a month are skipped.')
+    monthly_days = forms.CharField(required=False, label='Dates of month', help_text='Comma separated dates, 1–31, or last (for example: 15, last). Dates beyond month end use the last day.')
     months = forms.MultipleChoiceField(choices=MONTHS, widget=forms.CheckboxSelectMultiple, required=False)
     month_day = forms.IntegerField(min_value=1, max_value=31, required=False, label='Day of selected months')
     ordinal = forms.ChoiceField(choices=[('1','First'),('2','Second'),('3','Third'),('4','Fourth'),('5','Fifth'),('-1','Last')], required=False)
@@ -44,7 +45,7 @@ class RuleFields(forms.Form):
             elif kind == 'weekdays':
                 rule = {'kind':'weekdays','weekdays': sorted(int(x) for x in data.get('weekdays', []))}
             elif kind == 'monthly_dates':
-                rule = {'kind':'monthly_dates','days': sorted(set(int(x.strip()) for x in data.get('monthly_days','').split(',') if x.strip()))}
+                rule = {'kind':'monthly_dates','days': sorted(set(31 if x.strip().lower() == 'last' else int(x.strip()) for x in data.get('monthly_days','').split(',') if x.strip()))}
             elif kind == 'selected_months':
                 rule = {'kind':'selected_months','months': sorted(int(x) for x in data.get('months', [])),'day':data.get('month_day')}
             elif kind == 'ordinal_weekday':
@@ -67,7 +68,7 @@ class RuleFields(forms.Form):
 class BillForm(RuleFields, forms.ModelForm):
     class Meta:
         model = Bill
-        fields = ['name','amount','start_date','payment_link','notes']
+        fields = ['name','category','amount','start_date','payment_link','notes']
         widgets = {'start_date': forms.DateInput(attrs={'type':'date'})}
         labels = {'start_date':'First due date', 'amount':'Expected amount'}
 
@@ -86,9 +87,9 @@ class BillForm(RuleFields, forms.ModelForm):
 class ScheduleForm(RuleFields, forms.ModelForm):
     class Meta:
         model = PaySchedule
-        fields = ['anchor_date']
+        fields = ['name', 'expected_amount', 'anchor_date']
         widgets = {'anchor_date': forms.DateInput(attrs={'type':'date'})}
-        labels = {'anchor_date':'A known payday'}
+        labels = {'anchor_date':'First payday to include', 'expected_amount':'Expected amount per payday'}
 
     def clean(self):
         data = super().clean()
@@ -101,6 +102,19 @@ class ScheduleForm(RuleFields, forms.ModelForm):
         schedule.recurrence = self.cleaned_data['rule']
         if commit: schedule.save()
         return schedule
+
+class CategoryForm(forms.ModelForm):
+    class Meta:
+        model = Category
+        fields = ['name', 'subcategory']
+        labels = {'name': 'Category', 'subcategory': 'Subcategory (optional)'}
+
+    def clean(self):
+        data = super().clean()
+        name, subcategory = data.get('name'), data.get('subcategory', '')
+        if name and Category.objects.filter(name__iexact=name, subcategory__iexact=subcategory).exclude(pk=self.instance.pk).exists():
+            raise ValidationError('This category already exists. Select it when editing a bill.')
+        return data
 
 class PaymentForm(forms.ModelForm):
     payment_revision = forms.IntegerField(min_value=0, widget=forms.HiddenInput)

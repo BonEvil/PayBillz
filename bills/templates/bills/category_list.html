@@ -1,0 +1,3 @@
+{% extends 'bills/base.html' %}{% block content %}
+<div class="heading"><h1>Categories</h1><a class="button" href="{% url 'bills:category_new' %}">Add category</a></div><p>Reuse categories across bills, for example Utility → Electric or Credit card → Visa. Renaming a category updates every bill using it.</p>
+{% for category in categories %}<section class="card"><h2>{{ category }}</h2><a href="{% url 'bills:category_edit' category.pk %}">Edit</a></section>{% empty %}<p>No categories yet.</p>{% endfor %}{% endblock %}

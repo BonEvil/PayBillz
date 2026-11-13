@@ -3,7 +3,19 @@ from django.core.validators import MinValueValidator
 from django.core.validators import URLValidator
 from decimal import Decimal
 
+class Category(models.Model):
+    name = models.CharField(max_length=100)
+    subcategory = models.CharField(max_length=100, blank=True)
+
+    class Meta:
+        ordering = ['name', 'subcategory', 'pk']
+        constraints = [models.UniqueConstraint(fields=['name', 'subcategory'], name='unique_category_pair')]
+
+    def __str__(self):
+        return f'{self.name} → {self.subcategory}' if self.subcategory else self.name
+
 class Bill(models.Model):
+    category = models.ForeignKey(Category, null=True, blank=True, on_delete=models.PROTECT, related_name='bills')
     name = models.CharField(max_length=160)
     amount = models.DecimalField(max_digits=12, decimal_places=2, validators=[MinValueValidator(Decimal('0.01'))])
     start_date = models.DateField()
@@ -22,6 +34,15 @@ class Bill(models.Model):
         return self.name
 
 class PaySchedule(models.Model):
+    name = models.CharField(max_length=160, default='Pay schedule')
+    expected_amount = models.DecimalField(max_digits=12, decimal_places=2, default=0, validators=[MinValueValidator(Decimal('0'))])
+
+    class Meta:
+        ordering = ['name', 'pk']
+
+    def __str__(self):
+        return self.name
+
     anchor_date = models.DateField()
     recurrence = models.JSONField()
 

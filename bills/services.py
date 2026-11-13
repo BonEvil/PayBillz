@@ -59,21 +59,29 @@ def archive_bill(bill, today=None):
 
 def payday_buckets(today=None, count=4):
     today = today or timezone.localdate()
-    schedule = PaySchedule.objects.first()
-    if schedule is None:
+    schedules = list(PaySchedule.objects.all())
+    if not schedules:
         return []
-    current, following = bucket_bounds(schedule.anchor_date, schedule.recurrence, today)
-    start = current or following
-    if start is None:
-        return []
+    bounds = [bucket_bounds(s.anchor_date, s.recurrence, today) for s in schedules]
+    current = [start for start, _ in bounds if start is not None]
+    following = [end for _, end in bounds if end is not None]
+    start = max(current) if current else min(following, default=None)
     buckets = []
     for _ in range(count):
-        _, next_date = bucket_bounds(schedule.anchor_date, schedule.recurrence, start)
+        if start is None:
+            break
+        future = [bucket_bounds(s.anchor_date, s.recurrence, start)[1] for s in schedules]
+        next_date = min((day for day in future if day is not None), default=None)
         if next_date is None:
             break
         buckets.append((start, next_date - timedelta(days=1)))
         start = next_date
     return buckets
+
+
+def payday_income(day):
+    return [schedule for schedule in PaySchedule.objects.all()
+            if occurrences(schedule.anchor_date, schedule.recurrence, day, day)]
 
 
 def next_cycle(today=None):

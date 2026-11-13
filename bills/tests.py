@@ -89,7 +89,7 @@ class BillFlowTests(TestCase):
         response=self.client.post(reverse('bills:bill_new'),{'name':'Water','amount':'23.50','start_date':'2026-11-13','kind':'interval','every':'1','unit':'months'})
         self.assertEqual(response.status_code,302)
         self.assertEqual(Bill.objects.get(name='Water').recurrence,{'kind':'interval','every':1,'unit':'months'})
-        response=self.client.post(reverse('bills:schedule'),{'anchor_date':'2026-11-13','kind':'interval','every':'2','unit':'weeks'})
+        response=self.client.post(reverse('bills:schedule_new'),{'name':'Salary','expected_amount':'2000','anchor_date':'2026-11-13','kind':'interval','every':'2','unit':'weeks'})
         self.assertEqual(response.status_code,302)
         self.assertEqual(PaySchedule.objects.get().recurrence['every'],2)
 
@@ -232,3 +232,55 @@ class RequirementTests(TestCase):
         with patch('bills.views.timezone.localdate', return_value=self.today):
             response = self.client.get(reverse('bills:dashboard'))
         self.assertTrue(all(row.due_date < self.today for row in response.context['overdue']))
+
+class MultipleIncomeAndCategoryTests(TestCase):
+    def test_named_schedules_create_edit_without_replacing_others(self):
+        payload = {'name': 'Salary', 'expected_amount': '2100.25', 'anchor_date': '2026-01-15', 'kind': 'mid_month_end'}
+        self.assertEqual(self.client.post(reverse('bills:schedule_new'), payload).status_code, 302)
+        salary = PaySchedule.objects.get()
+        self.assertEqual(salary.recurrence, {'kind': 'monthly_dates', 'days': [15, 31]})
+        self.assertEqual(self.client.post(reverse('bills:schedule_new'), dict(payload, name='Second income', kind='weekly')).status_code, 302)
+        self.assertEqual(self.client.post(reverse('bills:schedule_edit', args=[salary.pk]), dict(payload, expected_amount='2200')).status_code, 302)
+        self.assertEqual(PaySchedule.objects.count(), 2)
+        salary.refresh_from_db()
+        self.assertEqual(salary.expected_amount, Decimal('2200'))
+        self.assertContains(self.client.get(reverse('bills:schedule')), 'Second income')
+        self.assertEqual(self.client.post(reverse('bills:schedule_new'), dict(payload, expected_amount='-1')).status_code, 200)
+        self.assertEqual(PaySchedule.objects.count(), 2)
+
+    def test_month_end_leap_year_and_custom_dates(self):
+        from .forms import ScheduleForm
+        from paybillz.recurrence import occurrences
+        form = ScheduleForm(data={'name': 'Custom', 'expected_amount': '500', 'anchor_date': '2024-01-01', 'kind': 'monthly_dates', 'monthly_days': '15, last'})
+        self.assertTrue(form.is_valid(), form.errors)
+        schedule = form.save()
+        self.assertEqual(occurrences(schedule.anchor_date, schedule.recurrence, date(2024,2,1), date(2024,3,31)), [date(2024,2,15), date(2024,2,29), date(2024,3,15), date(2024,3,31)])
+        self.assertEqual(occurrences(schedule.anchor_date, schedule.recurrence, date(2025,2,1), date(2025,2,28)), [date(2025,2,15), date(2025,2,28)])
+
+    def test_combined_timeline_same_day_income_and_no_duplicate_bills(self):
+        PaySchedule.objects.create(name='Salary', expected_amount='1000', anchor_date=date(2026,11,1), recurrence={'kind':'monthly_dates','days':[15,31]})
+        PaySchedule.objects.create(name='Other', expected_amount='250', anchor_date=date(2026,11,15), recurrence=RULE)
+        for day in (15,21,22,29,30):
+            Bill.objects.create(name=f'Bill {day}', amount=10, start_date=date(2026,11,day), recurrence={'kind':'once'})
+        with patch('bills.views.timezone.localdate', return_value=date(2026,11,15)):
+            response = self.client.get(reverse('bills:dashboard'))
+        buckets = response.context['buckets']
+        self.assertEqual([(b['start'].day,b['end'].day) for b in buckets], [(15,21),(22,28),(29,29),(30,5)])
+        self.assertEqual([b['income'] for b in buckets], [1250,250,250,1000])
+        ids = [row.pk for bucket in buckets for row in bucket['rows']]
+        self.assertEqual(len(ids), 5)
+        self.assertEqual(len(set(ids)), 5)
+
+    def test_reusable_categories_edit_and_duplicate_validation(self):
+        from .models import Category
+        self.assertEqual(self.client.post(reverse('bills:category_new'), {'name':'Utility','subcategory':'Electric'}).status_code,302)
+        category = Category.objects.get()
+        for name in ('Home electric','Garage electric'):
+            response = self.client.post(reverse('bills:bill_new'), {'name':name,'amount':'30','start_date':'2026-11-15','kind':'monthly','category':category.pk})
+            self.assertEqual(response.status_code,302)
+        self.assertEqual(category.bills.count(),2)
+        self.assertEqual(self.client.post(reverse('bills:category_new'), {'name':'utility','subcategory':'electric'}).status_code,200)
+        self.assertEqual(Category.objects.count(),1)
+        self.client.post(reverse('bills:category_edit', args=[category.pk]), {'name':'Utilities','subcategory':'Electricity'})
+        self.assertContains(self.client.get(reverse('bills:bill_list')), 'Utilities → Electricity',count=2)
+        self.assertEqual(self.client.post(reverse('bills:bill_new'), {'name':'Invalid','amount':'30','start_date':'2026-11-15','kind':'monthly','category':999999}).status_code,200)

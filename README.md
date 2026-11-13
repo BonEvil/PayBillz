@@ -47,3 +47,11 @@ git pull --ff-only
 ```
 
 Updates back up before migrations and roll back failed migrations. Uninstall preserves data and backups. Do not run lifecycle commands concurrently. See [operations](ops-delivery/OPERATIONS.md) and [contributing](CONTRIBUTING.md). Do not include personal data, SQLite files, or configuration secrets in issues or contributions.
+
+## Multiple income sources and categories
+
+Use **Pay schedules → Add pay schedule** for each income source. Give each a name, expected amount per payday, first included payday, and recurrence. The 15th/last-day preset handles February and shorter months automatically; custom monthly dates accept values such as `5, 20, last`. Interval, weekday, and ordinal weekday rules remain available.
+
+All schedules form one combined timeline: a bucket starts on a payday and ends the day before the next payday from any schedule. Income arriving on the same day is added together. Each bill appears in only one bucket. Expected income is a projection, not a bank balance. Editing or removing schedules recalculates buckets without deleting bills or payment history. Existing schedules migrate with the name “Pay schedule” and an expected amount of $0; edit these values after updating.
+
+Use **Categories** to create reusable category/subcategory pairs such as Utility → Electric or Credit card → Visa, then select one on any bill. The subcategory is optional. Editing a category updates its label across bills, dashboard, and history without changing recorded payment amounts or dates.

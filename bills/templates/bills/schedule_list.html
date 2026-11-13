@@ -1,0 +1,5 @@
+{% extends 'bills/base.html' %}{% block content %}
+<div class="heading"><h1>Pay schedules</h1><a class="button" href="{% url 'bills:schedule_new' %}">Add pay schedule</a></div>
+<p>Add each income source with its own payday rules and expected amount per payday.</p>
+{% for schedule in schedules %}<section class="card"><h2>{{ schedule.name }}</h2><p>${{ schedule.expected_amount|floatformat:2 }} per payday · Starts {{ schedule.anchor_date }}</p><a href="{% url 'bills:schedule_edit' schedule.pk %}">Edit</a> · <a href="{% url 'bills:schedule_delete' schedule.pk %}">Remove</a></section>{% empty %}<p>No pay schedules yet.</p>{% endfor %}
+{% endblock %}
