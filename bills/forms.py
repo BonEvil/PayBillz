@@ -145,7 +145,8 @@ class PaymentForm(forms.ModelForm):
         model = Payment
         fields = ['amount','paid_date']
         widgets = {'paid_date': forms.DateInput(attrs={'type':'date'})}
-        labels = {'amount':'Actual amount', 'paid_date':'Date paid'}
+        labels = {'amount':'Amount paid (0 if nothing due)', 'paid_date':'Completion date'}
+        help_texts = {'amount':'Leave 0 when no payment is due, or enter the amount paid before completing this bill.'}
 
 class OccurrenceForm(forms.ModelForm):
     class Meta:
@@ -156,5 +157,5 @@ class OccurrenceForm(forms.ModelForm):
 
     def clean_expected(self):
         value = self.cleaned_data['expected']
-        if value <= Decimal('0'): raise ValidationError('Enter an amount greater than zero.')
+        if value < Decimal('0'): raise ValidationError('Enter zero or a positive amount.')
         return value

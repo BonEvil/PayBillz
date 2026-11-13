@@ -357,3 +357,83 @@ class PWATests(TestCase):
         self.assertIn('paybillz start', content)
         self.assertNotIn('<form', content)
         self.assertEqual(self.client.get('/pwa/../../paybillz/settings.py').status_code,404)
+
+class BillImportTests(TestCase):
+    def run_import(self, rows, apply=False):
+        import json
+        import tempfile
+        from io import StringIO
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.json') as source:
+            json.dump({'version':1,'bills':rows},source);source.flush()
+            output = StringIO()
+            call_command('import_bills', source.name, apply=apply, stdout=output)
+            return json.loads(output.getvalue())
+
+    def sample(self, **changes):
+        return {'source_reference':'test:bill-1','name':'Electric','amount':'0.00','start_date':'2026-11-19',
+                'recurrence':{'kind':'interval','unit':'months','every':2},
+                'category':'Utilities','subcategory':'Electric','notes':'Imported fixture', **changes}
+
+    def test_preview_is_read_only_then_apply_and_repeat(self):
+        from .models import Category
+        rows = [self.sample()]
+        self.assertEqual(self.run_import(rows)['new_bills'],1)
+        self.assertFalse(Bill.objects.exists())
+        self.assertFalse(Category.objects.exists())
+        self.assertEqual(self.run_import(rows,True)['new_bills'],1)
+        bill = Bill.objects.get()
+        self.assertEqual(bill.amount,0)
+        self.assertEqual(str(bill.category),'Utilities → Electric')
+        self.assertEqual(bill.start_date,date(2026,11,19))
+        self.assertTrue(bill.occurrences.exists())
+        bill.name='Locally edited';bill.save()
+        self.assertEqual(self.run_import(rows,True)['existing_skipped'],1)
+        bill.refresh_from_db()
+        self.assertEqual(bill.name,'Locally edited')
+        self.assertEqual(Bill.objects.count(),1)
+
+    def test_invalid_batch_never_partially_imports(self):
+        from .models import Category
+        for bad in [self.sample(source_reference='test:bill-2',amount='-2'),self.sample(source_reference='test:bill-2',start_date='bad'), self.sample()]:
+            with self.assertRaises(CommandError):
+                self.run_import([self.sample(),bad],True)
+            self.assertFalse(Bill.objects.exists())
+            self.assertFalse(Category.objects.exists())
+
+    def test_category_reuse_and_zero_forms(self):
+        from .models import Category
+        from .forms import BillForm,OccurrenceForm
+        category = Category.objects.create(name='utilities',subcategory='electric')
+        self.run_import([self.sample()],True)
+        bill=Bill.objects.get()
+        self.assertEqual(bill.category,category)
+        form=BillForm(data={'name':'Zero','amount':'0','start_date':'2026-11-19','kind':'monthly'})
+        self.assertTrue(form.is_valid(),form.errors)
+        form=OccurrenceForm(data={'due_date':'2026-11-19','expected':'0'},instance=bill.occurrences.first())
+        self.assertTrue(form.is_valid(),form.errors)
+
+class ZeroCompletionTests(TestCase):
+    def setUp(self):
+        self.bill=Bill.objects.create(name='No payment due',amount=0,start_date=date(2026,11,15),recurrence={'kind':'interval','unit':'months','every':1})
+        sync_bill(self.bill,date(2026,12,15),date(2026,11,13))
+        self.row=self.bill.occurrences.get(original_due=date(2026,11,15))
+
+    def test_zero_completion_history_undo_and_next_due(self):
+        url=reverse('bills:payment_edit',args=[self.row.pk])
+        self.assertEqual(self.client.post(url,{'amount':'0','paid_date':'2026-11-15','payment_revision':0}).status_code,302)
+        self.assertEqual(self.row.payment.amount,0)
+        self.assertContains(self.client.get(reverse('bills:history')),'Completed — nothing due')
+        self.assertTrue(self.bill.occurrences.filter(original_due=date(2026,12,15),payment__isnull=True).exists())
+        self.assertEqual(self.client.post(url,{'amount':'0','paid_date':'2026-11-15','payment_revision':0}).status_code,409)
+        self.assertEqual(self.client.post(reverse('bills:payment_undo',args=[self.row.pk]),{'payment_revision':1}).status_code,302)
+        self.assertFalse(Payment.objects.filter(occurrence=self.row).exists())
+
+    def test_enter_positive_amount_before_completing_zero_bill(self):
+        url=reverse('bills:payment_edit',args=[self.row.pk])
+        self.assertEqual(self.client.get(url).context['form']['amount'].value(),0)
+        self.assertEqual(self.client.post(url,{'amount':'73.25','paid_date':'2026-11-15','payment_revision':0}).status_code,302)
+        self.assertEqual(self.row.payment.amount,Decimal('73.25'))
+        self.assertContains(self.client.get(reverse('bills:history')),'$73.25 paid')
+        self.bill.refresh_from_db()
+        self.assertEqual(self.bill.amount,0)
+        self.assertEqual(self.client.post(url,{'amount':'-1','paid_date':'2026-11-15','payment_revision':1}).status_code,200)

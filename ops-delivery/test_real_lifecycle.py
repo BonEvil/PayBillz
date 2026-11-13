@@ -119,16 +119,17 @@ Payment.objects.create(occurrence=o, amount=Decimal("1200.00"), paid_date=date(2
             assert (home / 'app/version.txt').read_text() == 'updated\n'
             http_ok(port)
             assert rows(db) == baseline
-            bad_migration = source / 'bills/migrations/0004_fail.py'
+            latest_migration = sorted(p.stem for p in (source / 'bills/migrations').glob('[0-9]*.py'))[-1]
+            bad_migration = source / 'bills/migrations/9999_test_failure.py'
             bad_migration.write_text('''from django.db import migrations
 def fail(apps, schema_editor):
     raise RuntimeError("intentional migration failure")
 class Migration(migrations.Migration):
-    dependencies = [("bills", "0003_alter_payschedule_options_and_more")]
+    dependencies = [("bills", "LATEST_MIGRATION")]
     operations = [migrations.RunPython(fail)]
-''')
+'''.replace('LATEST_MIGRATION', latest_migration))
             call([cmd, 'update', '--source', source], env, expected=1)
-            assert not (home / 'app/bills/migrations/0004_fail.py').exists()
+            assert not (home / 'app/bills/migrations/9999_test_failure.py').exists()
             assert (home / 'app/version.txt').read_text() == 'updated\n'
             http_ok(port)
             assert rows(db) == baseline

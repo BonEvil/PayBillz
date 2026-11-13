@@ -133,7 +133,7 @@ def payment_edit(request, pk):
         except IntegrityError:
             return render(request,'bills/message.html',{'title':'Payment changed','message':'This payment changed. Reload it before saving.'},status=409)
         return redirect('bills:dashboard')
-    return render(request,'bills/form.html',{'form':form,'title':f'{"Correct payment" if payment else "Record payment"}: {row.name} ({row.due_date})','cancel':'bills:dashboard'})
+    return render(request,'bills/form.html',{'form':form,'title':f'{"Correct payment" if payment else "Complete bill"}: {row.name} ({row.due_date})','cancel':'bills:dashboard'})
 
 def payment_undo(request, pk):
     row = get_object_or_404(Occurrence, pk=pk)

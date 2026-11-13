@@ -59,7 +59,7 @@ References: [Omarchy web apps](https://github.com/omacom/omarchy/blob/quattro/ma
 1. Set a known payday and its recurrence under Pay schedule.
 2. Add bills with a name, expected amount, first due date, recurrence, optional payment link and notes.
 3. Review the current and next three paycheck buckets. Each includes payday through the day before the next payday. Earlier unpaid bills remain visible separately; overdue bills in the current bucket are marked there without being counted twice.
-4. Choose Pay to record the actual amount and date. Correct changes an existing record; Undo makes that occurrence unpaid again. Repeated or stale payment submissions are rejected with an instruction to reload.
+4. Choose Complete to record the actual amount and date. Enter 0 when nothing is due; history labels it “Completed — nothing due.” You can enter a positive amount before saving when payment is needed, without changing the recurring expected amount. Correct changes an existing record; Undo makes that occurrence unpaid again. Repeated or stale payment submissions are rejected with an instruction to reload.
 5. Adjust changes one occurrence's due date or expected amount. History searches bill names and filters payment status and due dates. Archive stops future scheduling while retaining missed and paid records.
 
 The paid total sums actual payments associated with a bucket's due dates; outstanding sums expected amounts of unpaid occurrences. Paying a different amount settles that occurrence, so expected need not equal paid plus outstanding.
@@ -92,3 +92,9 @@ Use **Pay schedules → Add pay schedule** for each income source. Give each a n
 All schedules form one combined timeline: a bucket starts on a payday and ends the day before the next payday from any schedule. Income arriving on the same day is added together. Each bill appears in only one bucket. Expected income is a projection, not a bank balance. Editing or removing schedules recalculates buckets without deleting bills or payment history. Existing schedules migrate with the name “Pay schedule” and an expected amount of $0; edit these values after updating.
 
 Use **Categories** to create reusable category/subcategory pairs such as Utility → Electric or Credit card → Visa, then select one on any bill. You can also check **Add a new category** directly on the bill form, enter a category and optional subcategory, and save both together. Matching existing categories are reused; invalid bill submissions preserve your input without creating categories. The subcategory is optional. Editing a category updates its label across bills, dashboard, and history without changing recorded payment amounts or dates.
+
+## Import recurring bills
+
+The management command `python manage.py import_bills /path/to/bills.json` previews a normalized version-1 JSON file. Add `--apply` to import atomically. Take a `paybillz backup` first. Each bill needs a stable `source_reference`, name, nonnegative decimal amount, ISO `start_date`, and a supported `recurrence` object. Optional fields are category, subcategory, notes and payment_link. The top-level object is `{"version": 1, "bills": [...]}`.
+
+Repeated source references are skipped without overwriting edits. Preview does not write data; an invalid batch creates no bills. This importer adds bills; it never removes existing bills or imports payment history. The first date is the first occurrence to track in PayBillz, so use the source's current next due date instead of a historical original start date. Keep personal exports outside the repository. Zero expected amounts and zero-dollar completions are supported.

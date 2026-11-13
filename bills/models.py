@@ -15,9 +15,10 @@ class Category(models.Model):
         return f'{self.name} → {self.subcategory}' if self.subcategory else self.name
 
 class Bill(models.Model):
+    source_reference = models.CharField(max_length=200, null=True, blank=True, unique=True, editable=False)
     category = models.ForeignKey(Category, null=True, blank=True, on_delete=models.PROTECT, related_name='bills')
     name = models.CharField(max_length=160)
-    amount = models.DecimalField(max_digits=12, decimal_places=2, validators=[MinValueValidator(Decimal('0.01'))])
+    amount = models.DecimalField(max_digits=12, decimal_places=2, validators=[MinValueValidator(Decimal('0'))])
     start_date = models.DateField()
     recurrence = models.JSONField()
     rule_effective_from = models.DateField(null=True, blank=True)
@@ -62,7 +63,7 @@ class Occurrence(models.Model):
 
 class Payment(models.Model):
     occurrence = models.OneToOneField(Occurrence, on_delete=models.PROTECT, related_name='payment')
-    amount = models.DecimalField(max_digits=12, decimal_places=2, validators=[MinValueValidator(Decimal('0.01'))])
+    amount = models.DecimalField(max_digits=12, decimal_places=2, validators=[MinValueValidator(Decimal('0'))])
     paid_date = models.DateField()
     recorded_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
