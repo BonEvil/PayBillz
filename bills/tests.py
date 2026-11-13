@@ -607,7 +607,8 @@ class IncomeCompletionTests(TestCase):
         with patch('bills.views.timezone.localdate',return_value=self.today):
             response=self.client.get('/')
         bucket=response.context['selected']
-        self.assertEqual([r.is_income for r in bucket['rows']],[True,False])
+        self.assertEqual([r.is_income for r in bucket['rows']],[False])
+        self.assertNotContains(response, f'data-occurrence="{self.row.pk}"')
         self.assertEqual((bucket['income'],bucket['received'],bucket['pending_income']),(1000,980,0))
         self.assertEqual((bucket['paid'],bucket['outstanding'],bucket['remaining']),(0,100,880))
         self.assertNotContains(response,'class="income-strip"')
@@ -673,3 +674,22 @@ class IncomeCompletionTests(TestCase):
         from .services import sync_schedule
         sync_schedule(self.schedule,date(2027,2,28),self.today)
         self.assertEqual(self.schedule.occurrences.filter(original_due=date(2026,11,15)).count(),1)
+
+    def test_completed_transactions_leave_overview_and_undo_restores_them(self):
+        bill_row=self.bill.occurrences.get(original_due=date(2026,11,16))
+        with patch('bills.views.timezone.localdate',return_value=self.today):
+            for row,amount in [(self.row,'980'),(bill_row,'0')]:
+                self.assertContains(self.client.get('/'),f'data-occurrence="{row.pk}"')
+                response=self.client.post(reverse('bills:payment_edit',args=[row.pk]),
+                    {'amount':amount,'paid_date':'2026-11-13','payment_revision':0},follow=True)
+                self.assertNotContains(response,f'data-occurrence="{row.pk}"')
+                history=self.client.get(reverse('bills:history'),{'status':'paid'})
+                self.assertContains(history,f'data-occurrence="{row.pk}"')
+            overview=self.client.get('/')
+            self.assertContains(overview,'No pending transactions this pay period.')
+            self.assertEqual(overview.context['selected']['remaining'],980)
+            upcoming=self.client.get('/',{'period':1})
+            self.assertTrue(any(r.is_income for r in upcoming.context['selected']['rows']))
+            for row in [self.row,bill_row]:
+                self.client.post(reverse('bills:payment_undo',args=[row.pk]),{'payment_revision':1})
+                self.assertContains(self.client.get('/'),f'data-occurrence="{row.pk}"')

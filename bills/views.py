@@ -34,7 +34,8 @@ def dashboard(request):
             received = sum((r.payment.amount for r in incomes if hasattr(r, 'payment')), Decimal('0'))
             pending_income = sum((r.expected for r in incomes if not hasattr(r, 'payment')), Decimal('0'))
             buckets.append({'income': income, 'received': received, 'pending_income': pending_income,
-                            'effective_income': received + pending_income, 'start':start, 'end':end, 'rows':rows,
+                            'effective_income': received + pending_income, 'start':start, 'end':end,
+                            'rows':[r for r in rows if not hasattr(r, 'payment')],
                             'expected':sum((r.expected for r in expenses), Decimal('0')),
                             'paid':sum((r.payment.amount for r in expenses if hasattr(r, 'payment')), Decimal('0')),
                             'outstanding':sum((r.expected for r in expenses if not hasattr(r, 'payment')), Decimal('0'))})
