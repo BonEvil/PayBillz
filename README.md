@@ -108,3 +108,7 @@ Starter categories include utilities, housing, credit cards, insurance, transpor
 The upgrade adds icons and starter categories without changing existing bill amounts, dates, recurrence rules, payments, or pay schedules. The after-payments figure subtracts actual recorded payments and expected unpaid bills from expected income; it is a plan, not a bank balance.
 
 Transaction rows show the earliest outstanding bill due date (including overdue bills and date overrides), or the next payday for income. Completed dates are skipped; archived bills only show obligations already recorded.
+
+### Icon library
+
+The icon picker includes nearly 300 bundled line icons. Use **Browse category** for money/work, home/utilities, transport/travel, food, health/fitness, family/pets, technology, entertainment, shopping, outdoors, or general symbols. Search accepts everyday terms such as dentist, gym, mortgage, pets, salary, and streaming. Category filters and search work together; the result count shows how many icons match. Existing selections and category inheritance are preserved. Selected Lucide assets are bundled locally with their upstream notices in `licenses/`; no external icon service is needed.

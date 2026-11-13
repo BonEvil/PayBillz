@@ -19,6 +19,16 @@ if (picker && typeof picker.showModal === 'function') {
   const category = document.getElementById('id_category');
   const search = document.getElementById('icon-search');
   const choices = [...picker.querySelectorAll('[data-icon-search]')];
+  const group = document.getElementById('icon-group');
+  const filterIcons = () => {
+    const terms = search.value.trim().toLowerCase().split(/\s+/).filter(Boolean);
+    choices.forEach(choice => {
+      choice.hidden = (group.value && choice.dataset.iconGroup !== group.value) || !terms.every(term => choice.dataset.iconSearch.toLowerCase().includes(term));
+    });
+    const count = choices.filter(choice => !choice.hidden).length;
+    document.getElementById('icon-no-results').hidden = count !== 0;
+    document.getElementById('icon-result-count').textContent = `${count} of ${choices.length} icons`;
+  };
   const inherit = picker.querySelector('.inherit-icon');
   let activeSelect, trigger;
   const defaultIcon = () => {
@@ -42,15 +52,13 @@ if (picker && typeof picker.showModal === 'function') {
       inherit.hidden = select.id === 'id_icon';
       inherit.textContent = select.id === 'id_new_category_icon' ? 'Automatic icon' : 'Use category icon';
       choices.forEach(choice => { choice.hidden = false; choice.setAttribute('aria-pressed', String(choice.dataset.iconValue === select.value)); });
-      search.value = ''; document.getElementById('icon-no-results').hidden = true;
-      picker.showModal(); search.focus();
+      search.value = ''; group.value = ''; filterIcons();
+      picker.showModal(); picker.querySelector(".icon-grid").scrollTop = 0; search.focus();
     });
   });
   category?.addEventListener('change', refresh); addCategory?.addEventListener('change', refresh);
-  search.addEventListener('input', () => {
-    choices.forEach(choice => { choice.hidden = !choice.dataset.iconSearch.toLowerCase().includes(search.value.trim().toLowerCase()); });
-    document.getElementById('icon-no-results').hidden = choices.some(choice => !choice.hidden);
-  });
+  search.addEventListener('input', filterIcons);
+  group.addEventListener('change', filterIcons);
   picker.querySelectorAll('[data-icon-value]').forEach(button => button.addEventListener('click', () => {
     activeSelect.value = button.dataset.iconValue;
     activeSelect.dispatchEvent(new Event('change', {bubbles:true}));

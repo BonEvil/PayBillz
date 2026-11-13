@@ -542,3 +542,35 @@ class TransactionDueDateTests(TestCase):
             response=self.client.get(reverse('bills:bill_list'))
         self.assertContains(response,'Next payday')
         self.assertContains(response,'datetime="2035-01-15"')
+
+class ExpandedIconLibraryTests(TestCase):
+    def test_catalog_search_metadata_and_safe_shapes(self):
+        import xml.etree.ElementTree as ET
+        from .icons import ICON_CHOICES, ICON_OPTIONS, ICONS, ICON_GROUPS
+        self.assertGreaterEqual(len(ICON_CHOICES),250)
+        self.assertGreaterEqual(len(ICON_GROUPS),10)
+        self.assertEqual(len(dict(ICON_CHOICES)),len(ICON_CHOICES))
+        for item in ICON_OPTIONS:
+            self.assertLessEqual(len(item['key']),32)
+            shape=ET.fromstring('<svg>'+ICONS[item['key']][1]+'</svg>')
+            for element in shape.iter():
+                self.assertIn(element.tag,{'svg','path','circle','ellipse','rect','line','polyline','polygon'})
+                self.assertFalse(any(attr.startswith('on') or attr in {'href','style'} for attr in element.attrib))
+        for term,key in [('dentist','tooth'),('gym','dumbbell'),('mortgage','home'),('vet','dog'),('salary','wallet')]:
+            self.assertIn(term,next(item['search'] for item in ICON_OPTIONS if item['key']==key).lower())
+
+    def test_new_icons_save_on_category_bill_and_income(self):
+        from .forms import BillForm,CategoryForm,ScheduleForm
+        category_form=CategoryForm(data={'name':'Veterinary','subcategory':'','icon':'dog'})
+        self.assertTrue(category_form.is_valid(),category_form.errors)
+        category=category_form.save()
+        bill_form=BillForm(data={'name':'Vet visit','amount':'0','start_date':'2026-11-15','kind':'monthly','category':category.pk,'icon_override':'paw-print'})
+        self.assertTrue(bill_form.is_valid(),bill_form.errors)
+        bill=bill_form.save();self.assertEqual(bill.display_icon,'paw-print')
+        schedule_form=ScheduleForm(data={'name':'Side business','expected_amount':'200','anchor_date':'2026-11-15','kind':'monthly','icon_override':'coins'})
+        self.assertTrue(schedule_form.is_valid(),schedule_form.errors)
+        self.assertEqual(schedule_form.save().display_icon,'coins')
+        response=self.client.get(reverse('bills:bill_edit',args=[bill.pk]))
+        self.assertContains(response,'id="icon-group"')
+        self.assertContains(response,'data-icon-value="paw-print"')
+        self.assertContains(response,'data-icon-value="tooth"')

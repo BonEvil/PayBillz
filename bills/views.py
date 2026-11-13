@@ -7,7 +7,7 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
 from .forms import BillForm, CategoryForm, OccurrenceForm, PaymentForm, RuleFields, ScheduleForm
 from .models import Bill, Category, Occurrence, Payment, PaySchedule
-from .icons import ICON_CHOICES
+from .icons import ICON_CHOICES, ICON_OPTIONS, ICON_GROUPS
 from paybillz.recurrence import next_occurrence
 from .services import bill_due_date, archive_bill, change_bill, payday_buckets, payday_income, sync_bill
 
@@ -189,4 +189,4 @@ def history(request):
 
 
 def icon_context():
-    return {'icon_choices': ICON_CHOICES, 'category_icons': {str(c.pk): c.icon for c in Category.objects.all()}}
+    return {'icon_choices': ICON_CHOICES, 'icon_options': ICON_OPTIONS, 'icon_groups': ICON_GROUPS, 'category_icons': {str(c.pk): c.icon for c in Category.objects.all()}}
