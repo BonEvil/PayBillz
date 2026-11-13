@@ -3,6 +3,7 @@ name: WSL 1 lifecycle check
 on:
   workflow_dispatch:
   push:
+    branches: [main]
   pull_request:
 
 permissions:
