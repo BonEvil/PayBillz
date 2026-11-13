@@ -1,0 +1,8 @@
+{% extends 'bills/base.html' %}{% block title %}Dashboard · PayBillz{% endblock %}{% block content %}
+<div class="heading"><h1>Dashboard</h1><a class="button" href="{% url 'bills:bill_new' %}">Add bill</a></div>
+{% if not cycle %}<section class="card"><h2>Set your payday cycle</h2><p>Choose a known repeating payday to see bills grouped by pay period.</p><a class="button" href="{% url 'bills:schedule' %}">Set pay schedule</a></section>{% else %}
+{% for bucket in buckets %}<section><h2>{% if forloop.first %}{% if bucket.start > today %}Next pay period{% else %}Current pay period{% endif %}{% else %}Upcoming pay period {{ forloop.counter }}{% endif %}: {{ bucket.start }} through {{ bucket.end }}</h2>
+<div class="summary"><div class="card"><span>Expected</span><strong>${{ bucket.expected|floatformat:2 }}</strong></div><div class="card"><span>Paid</span><strong>${{ bucket.paid|floatformat:2 }}</strong></div><div class="card"><span>Outstanding</span><strong>${{ bucket.outstanding|floatformat:2 }}</strong></div></div>
+{% include 'bills/rows.html' with rows=bucket.rows empty='No bills due this pay period.' %}</section>{% endfor %}
+<section><h2>Overdue from earlier periods</h2><p class="muted">These are separate from the pay period totals.</p>{% include 'bills/rows.html' with rows=overdue empty='No overdue bills.' %}</section>{% endif %}
+{% endblock %}

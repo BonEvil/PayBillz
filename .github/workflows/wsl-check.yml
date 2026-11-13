@@ -1,0 +1,60 @@
+name: WSL 1 lifecycle check
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  wsl-lifecycle:
+    runs-on: windows-2025
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Ubuntu 24.04 under WSL 1
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $feature = Get-WindowsOptionalFeature -Online -FeatureName Microsoft-Windows-Subsystem-Linux
+          if ($feature.State -ne 'Enabled') { throw "WSL 1 feature is not enabled on this runner: $($feature.State)" }
+          wsl.exe --set-default-version 1
+          if ($LASTEXITCODE -ne 0) { throw 'Could not select WSL 1' }
+          wsl.exe --install --distribution Ubuntu-24.04 --web-download --no-launch
+          if ($LASTEXITCODE -ne 0) { throw 'Ubuntu 24.04 installation failed' }
+          $inventory = ((wsl.exe --list --verbose | Out-String) -replace "`0", '')
+          Write-Host $inventory
+          if ($inventory -notmatch '(?im)^\s*\*?\s*Ubuntu-24\.04\s+\S+\s+1\s*$') {
+            throw 'Ubuntu-24.04 did not register as WSL 1; refusing to run a non-WSL-1 test'
+          }
+
+      - name: Exercise real installer inside Ubuntu as an unprivileged user
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $source = (wsl.exe --distribution Ubuntu-24.04 --user root --exec wslpath -a $env:GITHUB_WORKSPACE | Out-String).Trim()
+          if ($LASTEXITCODE -ne 0 -or -not $source.StartsWith('/')) { throw 'Could not convert checkout path for WSL' }
+          $script = @'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          test -f /proc/sys/fs/binfmt_misc/WSLInterop || grep -qi microsoft /proc/version
+          test "$(. /etc/os-release; echo "$ID:$VERSION_ID")" = 'ubuntu:24.04'
+          apt-get update
+          DEBIAN_FRONTEND=noninteractive apt-get install -y python3 python3-venv python3-pip ca-certificates
+          python3 -c 'import sys; assert sys.version_info >= (3, 12), sys.version'
+          id -u paybillzci >/dev/null 2>&1 || useradd --create-home --shell /bin/bash paybillzci
+          install -d -o paybillzci -g paybillzci /home/paybillzci/src
+          cp -a "$1/." /home/paybillzci/src/
+          chown -R paybillzci:paybillzci /home/paybillzci/src
+          runuser -u paybillzci -- bash -c 'cd /home/paybillzci/src && test "$(id -u)" -ne 0 && python3 ops-delivery/test_real_lifecycle.py'
+          '@
+          $scriptPath = Join-Path $env:RUNNER_TEMP 'paybillz-wsl-check.sh'
+          [System.IO.File]::WriteAllText($scriptPath, $script.Replace("`r`n", "`n"), [System.Text.UTF8Encoding]::new($false))
+          $wslScript = (wsl.exe --distribution Ubuntu-24.04 --user root --exec wslpath -a $scriptPath | Out-String).Trim()
+          if ($LASTEXITCODE -ne 0 -or -not $wslScript.StartsWith('/')) { throw 'Could not convert script path for WSL' }
+          wsl.exe --distribution Ubuntu-24.04 --user root --exec bash $wslScript $source
+          if ($LASTEXITCODE -ne 0) { throw 'WSL lifecycle test failed' }
