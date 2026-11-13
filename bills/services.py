@@ -1,7 +1,7 @@
 from datetime import date, timedelta
 from django.db import transaction
 from django.utils import timezone
-from paybillz.recurrence import bucket_bounds, occurrences
+from paybillz.recurrence import bucket_bounds, occurrences, next_occurrence
 from .models import Bill, Occurrence, PaySchedule
 
 
@@ -87,3 +87,24 @@ def payday_income(day):
 def next_cycle(today=None):
     bounds = payday_buckets(today, 1)
     return (bounds[0][0], bounds[0][1] + timedelta(days=1)) if bounds else None
+
+
+def bill_due_date(bill):
+    """Earliest outstanding due date, including overrides and unmaterialized dates.
+
+    Paid occurrences are skipped; archived bills only retain existing obligations.
+    Listing dates does not create or modify occurrences.
+    """
+    rows = list(bill.occurrences.all())
+    outstanding = [row.due_date for row in rows if not hasattr(row, 'payment')]
+    if not bill.archived:
+        recorded = {row.original_due for row in rows}
+        candidate = next_occurrence(bill.start_date, bill.recurrence, max(bill.start_date, bill.rule_effective_from or bill.start_date))
+        while candidate in recorded:
+            if candidate == date.max:
+                candidate = None
+                break
+            candidate = next_occurrence(bill.start_date, bill.recurrence, candidate + timedelta(days=1))
+        if candidate is not None:
+            outstanding.append(candidate)
+    return min(outstanding, default=None)

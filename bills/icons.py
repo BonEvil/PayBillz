@@ -1,5 +1,8 @@
-"""Small, bundled line-icon vocabulary. No remote assets or arbitrary SVG input."""
+"""Bundled line icons and picker metadata. No remote assets or user-supplied SVG."""
+import json
+from pathlib import Path
 ICONS = {
+    'tooth': ('Dental care', '<path d="M12 5C8 1 3 3 4 9c1 4 1 11 4 12 2 0 1-8 4-8s2 8 4 8c3-1 3-8 4-12 1-6-4-8-8-4z"/>'),
     'receipt': ('Receipt', '<path d="M5 3l2 2 2-2 3 2 3-2 2 2 2-2v18l-2-2-2 2-3-2-3 2-2-2-2 2zM9 9h6M9 13h6"/>'),
     'bolt': ('Electricity', '<path d="M13 2L4 14h7l-1 8 10-13h-8z"/>'),
     'wifi': ('Internet', '<path d="M2 8a16 16 0 0 1 20 0M5 12a11 11 0 0 1 14 0M8 16a6 6 0 0 1 8 0"/><circle cx="12" cy="20" r="1"/>'),
@@ -34,7 +37,28 @@ ICONS = {
     'chevron-right': ('Next', '<path d="M9 5l7 7-7 7"/>'),
     'close': ('Close', '<path d="M6 6l12 12M6 18L18 6"/>'),
 }
+# The original keys and shapes remain stable so saved selections never change.
+CATALOG = json.loads(Path(__file__).with_name('icon_catalog.json').read_text())
+LEGACY_GROUPS = json.loads(Path(__file__).with_name('icon_legacy_groups.json').read_text())
+LEGACY_GROUPS['tooth'] = 'Health & fitness'
+EXTRA_KEYWORDS = {'tooth': 'dentist dental orthodontist teeth', 'bolt': 'electricity electric power energy utility', 'wifi': 'internet broadband wifi isp network', 'home': 'housing mortgage rent property hoa', 'shield': 'insurance protection policy coverage', 'wallet': 'income salary paycheck wages cash money', 'car': 'auto automobile vehicle transport lease', 'heart': 'health medical healthcare', 'book': 'education school tuition student learning', 'tv': 'television streaming cable subscription netflix hulu', 'coffee': 'cafe breakfast restaurant drink', 'cart': 'groceries supermarket food shopping'}
+for key, item in CATALOG.items():
+    ICONS.setdefault(key, (item['label'], item['svg']))
 ICON_CHOICES = [(key, label) for key, (label, _) in ICONS.items() if key not in {'checks','plus','history','arrows','edit','chevron-left','chevron-right','close'}]
+
+ICON_OPTIONS = [
+    {'key': key, 'label': label,
+     'group': LEGACY_GROUPS.get(key, CATALOG.get(key, {}).get('group', 'General')),
+     'search': ' '.join([key.replace('-', ' '), label, CATALOG.get(key, {}).get('keywords', ''), EXTRA_KEYWORDS.get(key, '')])}
+    for key, label in ICON_CHOICES
+]
+ICON_GROUPS = sorted({item['group'] for item in ICON_OPTIONS})
+
+
+def icon_choices():
+    """Callable choices keep catalog-only additions out of schema migrations."""
+    return ICON_CHOICES
+
 
 def suggested_icon(name, subcategory=''):
     text = f'{subcategory} {name}'.lower()

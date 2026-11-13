@@ -182,3 +182,11 @@ def bucket_bounds(anchor: date, rule: dict, today: date) -> tuple[date | None, d
         tomorrow = today + timedelta(days=1)
         next_payday = next(_iter_occurrences(anchor, rule, tomorrow, date.max), None)
     return current, next_payday
+
+
+def next_occurrence(anchor: date, rule: dict, on_or_after: date) -> date | None:
+    """Find the next scheduled date without materializing an arbitrary horizon."""
+    _check_date(anchor, "anchor")
+    _check_date(on_or_after, "on_or_after")
+    validate_rule(rule)
+    return next(_iter_occurrences(anchor, rule, on_or_after, date.max), None)

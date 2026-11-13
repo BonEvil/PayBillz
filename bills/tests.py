@@ -361,7 +361,7 @@ class PWATests(TestCase):
             response = self.client.get(url)
             self.assertContains(response, 'rel="manifest"')
             self.assertContains(response, '/pwa/register.js')
-            self.assertContains(response, 'Install app')
+            self.assertNotContains(response, 'id="install-app"')
         response = self.client.get('/pwa/offline.html')
         content = b''.join(response.streaming_content).decode()
         self.assertIn('paybillz start', content)
@@ -515,3 +515,62 @@ class GraphiteIconTests(TestCase):
             self.assertContains(response,'&lt;img src=x onerror=alert(1)&gt;')
             self.assertNotContains(response,'<script>bad</script>')
         self.assertEqual(self.client.get('/static/bills/app.js').status_code,200)
+
+class TransactionDueDateTests(TestCase):
+    def test_list_dates_skip_paid_and_respect_overrides_without_writing(self):
+        bill=Bill.objects.create(name='Due date fixture',amount=0,start_date=date(2026,11,15),recurrence={'kind':'interval','unit':'months','every':1})
+        first=Occurrence.objects.create(bill=bill,name=bill.name,original_due=date(2026,11,15),due_date=date(2026,11,15),expected=0)
+        Payment.objects.create(occurrence=first,amount=0,paid_date=date(2026,11,15))
+        second=Occurrence.objects.create(bill=bill,name=bill.name,original_due=date(2026,12,15),due_date=date(2026,12,18),expected=0,due_overridden=True)
+        response=self.client.get(reverse('bills:bill_list'))
+        self.assertContains(response,'datetime="2026-12-18"')
+        self.assertEqual(Occurrence.objects.count(),2)
+        Payment.objects.create(occurrence=second,amount=0,paid_date=date(2026,12,18))
+        self.assertContains(self.client.get(reverse('bills:bill_list')),'datetime="2027-01-15"')
+        bill.archived=True;bill.save()
+        self.assertContains(self.client.get(reverse('bills:bill_list')),'No outstanding dates')
+
+    def test_one_time_completed_and_far_future_income(self):
+        from .services import bill_due_date
+        bill=Bill.objects.create(name='One time',amount=10,start_date=date(2026,1,1),recurrence={'kind':'once'})
+        self.assertEqual(bill_due_date(bill),date(2026,1,1))
+        row=Occurrence.objects.create(bill=bill,name=bill.name,original_due=bill.start_date,due_date=bill.start_date,expected=10)
+        Payment.objects.create(occurrence=row,amount=10,paid_date=bill.start_date)
+        self.assertIsNone(bill_due_date(bill))
+        PaySchedule.objects.create(name='Future income',expected_amount=10,anchor_date=date(2035,1,15),recurrence={'kind':'monthly_dates','days':[15,31]})
+        with patch('bills.views.timezone.localdate',return_value=date(2026,11,13)):
+            response=self.client.get(reverse('bills:bill_list'))
+        self.assertContains(response,'Next payday')
+        self.assertContains(response,'datetime="2035-01-15"')
+
+class ExpandedIconLibraryTests(TestCase):
+    def test_catalog_search_metadata_and_safe_shapes(self):
+        import xml.etree.ElementTree as ET
+        from .icons import ICON_CHOICES, ICON_OPTIONS, ICONS, ICON_GROUPS
+        self.assertGreaterEqual(len(ICON_CHOICES),250)
+        self.assertGreaterEqual(len(ICON_GROUPS),10)
+        self.assertEqual(len(dict(ICON_CHOICES)),len(ICON_CHOICES))
+        for item in ICON_OPTIONS:
+            self.assertLessEqual(len(item['key']),32)
+            shape=ET.fromstring('<svg>'+ICONS[item['key']][1]+'</svg>')
+            for element in shape.iter():
+                self.assertIn(element.tag,{'svg','path','circle','ellipse','rect','line','polyline','polygon'})
+                self.assertFalse(any(attr.startswith('on') or attr in {'href','style'} for attr in element.attrib))
+        for term,key in [('dentist','tooth'),('gym','dumbbell'),('mortgage','home'),('vet','dog'),('salary','wallet')]:
+            self.assertIn(term,next(item['search'] for item in ICON_OPTIONS if item['key']==key).lower())
+
+    def test_new_icons_save_on_category_bill_and_income(self):
+        from .forms import BillForm,CategoryForm,ScheduleForm
+        category_form=CategoryForm(data={'name':'Veterinary','subcategory':'','icon':'dog'})
+        self.assertTrue(category_form.is_valid(),category_form.errors)
+        category=category_form.save()
+        bill_form=BillForm(data={'name':'Vet visit','amount':'0','start_date':'2026-11-15','kind':'monthly','category':category.pk,'icon_override':'paw-print'})
+        self.assertTrue(bill_form.is_valid(),bill_form.errors)
+        bill=bill_form.save();self.assertEqual(bill.display_icon,'paw-print')
+        schedule_form=ScheduleForm(data={'name':'Side business','expected_amount':'200','anchor_date':'2026-11-15','kind':'monthly','icon_override':'coins'})
+        self.assertTrue(schedule_form.is_valid(),schedule_form.errors)
+        self.assertEqual(schedule_form.save().display_icon,'coins')
+        response=self.client.get(reverse('bills:bill_edit',args=[bill.pk]))
+        self.assertContains(response,'id="icon-group"')
+        self.assertContains(response,'data-icon-value="paw-print"')
+        self.assertContains(response,'data-icon-value="tooth"')

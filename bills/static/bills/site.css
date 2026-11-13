@@ -129,7 +129,7 @@ dialog .section-heading{margin-bottom:22px}
 .icon-choice svg{width:22px;height:22px}
 .inspector-top{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:20px}
 .inspector-top .eyebrow{margin:0}
-#install-status:empty{display:none}
+
 
 @media(min-width:1500px){.dashboard-layout{grid-template-columns:minmax(0,1fr) 290px;gap:32px}
 .transaction-head,.transaction-row{grid-template-columns:minmax(180px,1fr) 105px 100px 155px}
@@ -204,3 +204,14 @@ input:not([type=checkbox]),select,textarea{font-size:16px}
 
 .inspector>.eyebrow{margin-bottom:20px}
 .inspector .large-icon{margin-bottom:14px}
+
+.date-label{display:block;font-size:11px;color:var(--muted);margin-bottom:3px}.due-date small{display:block}
+
+#icon-picker{width:min(660px,calc(100% - 24px))}
+.icon-picker-tools{flex-shrink:0;background:var(--surface);padding-top:10px;padding-bottom:4px;border-bottom:1px solid var(--border)}
+.icon-picker-tools>label{display:block;font-size:12px;margin:6px 0}
+#icon-result-count{font-size:11px;margin:10px 0}
+#icon-picker[open]{display:flex;flex-direction:column;overflow:hidden}
+#icon-picker>.section-heading{flex-shrink:0}
+#icon-picker .icon-grid{grid-template-columns:repeat(5,minmax(0,1fr));overflow-y:auto;min-height:0;padding:4px;margin:10px -4px 0}
+@media(max-width:650px){#icon-picker .icon-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
