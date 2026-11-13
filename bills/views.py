@@ -1,14 +1,15 @@
 from datetime import date, timedelta
 from decimal import Decimal
 from django.db import IntegrityError, transaction
-from django.db.models import Q
+from django.db.models import Q, Prefetch
 from django.http import HttpResponseNotAllowed
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
 from .forms import BillForm, CategoryForm, OccurrenceForm, PaymentForm, RuleFields, ScheduleForm
 from .models import Bill, Category, Occurrence, Payment, PaySchedule
 from .icons import ICON_CHOICES
-from .services import archive_bill, change_bill, payday_buckets, payday_income, sync_bill
+from paybillz.recurrence import next_occurrence
+from .services import bill_due_date, archive_bill, change_bill, payday_buckets, payday_income, sync_bill
 
 def _sync(through):
     for bill in Bill.objects.filter(archived=False):
@@ -53,8 +54,13 @@ def dashboard(request):
     return render(request,'bills/dashboard.html',locals())
 
 def bill_list(request):
-    bills = Bill.objects.select_related('category').all()
-    return render(request,'bills/bill_list.html',{'bills':bills, 'schedules':PaySchedule.objects.select_related('category').all()})
+    bills = list(Bill.objects.select_related('category').prefetch_related(Prefetch('occurrences', queryset=Occurrence.objects.select_related('payment'))))
+    for bill in bills:
+        bill.next_due = bill_due_date(bill)
+    schedules = list(PaySchedule.objects.select_related('category'))
+    for schedule in schedules:
+        schedule.next_payday = next_occurrence(schedule.anchor_date, schedule.recurrence, timezone.localdate())
+    return render(request,'bills/bill_list.html',{'bills':bills, 'schedules':schedules})
 
 def bill_edit(request, pk=None):
     bill = get_object_or_404(Bill, pk=pk) if pk else None

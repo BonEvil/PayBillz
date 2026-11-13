@@ -7,4 +7,4 @@
 <a href="{% url 'bills:history' %}" {% if route == 'history' %}aria-current="page"{% endif %}>{% icon 'history' %} History</a>
 <a href="{% url 'bills:schedule' %}" {% if route == 'schedule' or route == 'schedule_edit' or route == 'schedule_new' %}aria-current="page"{% endif %}>{% icon 'wallet' %} Pay schedules</a>
 <a href="{% url 'bills:category_list' %}" {% if route == 'category_list' or route == 'category_edit' or route == 'category_new' %}aria-current="page"{% endif %}>{% icon 'tag' %} Categories</a>
-{% endwith %}</nav><div class="sidebar-bottom"><button type="button" id="install-app" class="button secondary" hidden>Install app</button><span class="local-dot">Local &amp; private</span><small>Your data stays yours.</small></div></aside><main id="main"><p id="install-status" role="status"></p>{% block content %}{% endblock %}</main></div></body></html>
+{% endwith %}</nav><div class="sidebar-bottom"><span class="local-dot">Local &amp; private</span><small>Your data stays yours.</small></div></aside><main id="main">{% block content %}{% endblock %}</main></div></body></html>

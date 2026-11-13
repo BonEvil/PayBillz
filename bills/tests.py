@@ -361,7 +361,7 @@ class PWATests(TestCase):
             response = self.client.get(url)
             self.assertContains(response, 'rel="manifest"')
             self.assertContains(response, '/pwa/register.js')
-            self.assertContains(response, 'Install app')
+            self.assertNotContains(response, 'id="install-app"')
         response = self.client.get('/pwa/offline.html')
         content = b''.join(response.streaming_content).decode()
         self.assertIn('paybillz start', content)
@@ -515,3 +515,30 @@ class GraphiteIconTests(TestCase):
             self.assertContains(response,'&lt;img src=x onerror=alert(1)&gt;')
             self.assertNotContains(response,'<script>bad</script>')
         self.assertEqual(self.client.get('/static/bills/app.js').status_code,200)
+
+class TransactionDueDateTests(TestCase):
+    def test_list_dates_skip_paid_and_respect_overrides_without_writing(self):
+        bill=Bill.objects.create(name='Due date fixture',amount=0,start_date=date(2026,11,15),recurrence={'kind':'interval','unit':'months','every':1})
+        first=Occurrence.objects.create(bill=bill,name=bill.name,original_due=date(2026,11,15),due_date=date(2026,11,15),expected=0)
+        Payment.objects.create(occurrence=first,amount=0,paid_date=date(2026,11,15))
+        second=Occurrence.objects.create(bill=bill,name=bill.name,original_due=date(2026,12,15),due_date=date(2026,12,18),expected=0,due_overridden=True)
+        response=self.client.get(reverse('bills:bill_list'))
+        self.assertContains(response,'datetime="2026-12-18"')
+        self.assertEqual(Occurrence.objects.count(),2)
+        Payment.objects.create(occurrence=second,amount=0,paid_date=date(2026,12,18))
+        self.assertContains(self.client.get(reverse('bills:bill_list')),'datetime="2027-01-15"')
+        bill.archived=True;bill.save()
+        self.assertContains(self.client.get(reverse('bills:bill_list')),'No outstanding dates')
+
+    def test_one_time_completed_and_far_future_income(self):
+        from .services import bill_due_date
+        bill=Bill.objects.create(name='One time',amount=10,start_date=date(2026,1,1),recurrence={'kind':'once'})
+        self.assertEqual(bill_due_date(bill),date(2026,1,1))
+        row=Occurrence.objects.create(bill=bill,name=bill.name,original_due=bill.start_date,due_date=bill.start_date,expected=10)
+        Payment.objects.create(occurrence=row,amount=10,paid_date=bill.start_date)
+        self.assertIsNone(bill_due_date(bill))
+        PaySchedule.objects.create(name='Future income',expected_amount=10,anchor_date=date(2035,1,15),recurrence={'kind':'monthly_dates','days':[15,31]})
+        with patch('bills.views.timezone.localdate',return_value=date(2026,11,13)):
+            response=self.client.get(reverse('bills:bill_list'))
+        self.assertContains(response,'Next payday')
+        self.assertContains(response,'datetime="2035-01-15"')
