@@ -1,0 +1,3 @@
+{% load static %}<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>{% block title %}PayBillz{% endblock %}</title><link rel="stylesheet" href="{% static 'bills/site.css' %}"></head>
+<body><header class="site-head"><div class="wrap"><a class="brand" href="{% url 'bills:dashboard' %}">PayBillz</a><nav aria-label="Main navigation"><a href="{% url 'bills:dashboard' %}">Dashboard</a><a href="{% url 'bills:bill_list' %}">Bills</a><a href="{% url 'bills:history' %}">History</a><a href="{% url 'bills:schedule' %}">Pay schedule</a></nav></div></header><main class="wrap">{% block content %}{% endblock %}</main></body></html>

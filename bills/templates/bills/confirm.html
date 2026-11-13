@@ -1,0 +1,1 @@
+{% extends 'bills/base.html' %}{% block content %}<h1>{{ title }}</h1><div class="card"><p>{{ question }}</p><form method="post">{% csrf_token %}<button class="button danger" type="submit">Archive</button> <a href="{% url cancel %}">Cancel</a></form></div>{% endblock %}

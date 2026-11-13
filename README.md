@@ -1,2 +1,49 @@
 # PayBillz
-Local-only recurring bills and paycheck planning
+
+An MIT-licensed, single-user recurring bill planner that runs on your own computer. Python/Django, SQLite, responsive templates, and a small amount of JavaScript. No accounts, bank connections, payment processing, analytics, or cloud service are required. Recording a payment records your manual action; it does not transfer money.
+
+## Install and run
+
+Requires Python 3.12+ with venv/pip, a POSIX shell and ps. Linux and macOS use the same installer; Windows runs it inside WSL. See [operations](ops-delivery/OPERATIONS.md) for prerequisites, platform evidence, recovery, and custom paths.
+
+```sh
+git clone https://github.com/BonEvil/PayBillz.git
+cd PayBillz
+sh ops-delivery/install.sh
+~/.local/bin/paybillz start
+```
+
+Open http://127.0.0.1:8765/. The server binds only to IPv4 loopback. Use `~/.local/bin/paybillz stop` to stop it. Application files live in `~/.local/share/paybillz/app`; SQLite and configuration live separately in `~/.local/share/paybillz/data`. Keep the source checkout for future updates. The application works offline after installation; installation and updates need access to the pinned Python packages.
+
+On first installation, `data/config.json` contains a generated secret and timezone `UTC`. Set `timezone` to your IANA local timezone (for example `America/New_York`) and restart before entering bills. All due dates and payment dates are calendar dates; today is evaluated in that configured timezone. Amounts use exact decimals, with two fractional digits; the MVP displays dollar amounts and has no currency conversion.
+
+## Use
+
+1. Set a known payday and its recurrence under Pay schedule.
+2. Add bills with a name, expected amount, first due date, recurrence, optional payment link and notes.
+3. Review the current and next three paycheck buckets. Each includes payday through the day before the next payday. Earlier unpaid bills remain visible separately; overdue bills in the current bucket are marked there without being counted twice.
+4. Choose Pay to record the actual amount and date. Correct changes an existing record; Undo makes that occurrence unpaid again. Repeated or stale payment submissions are rejected with an instruction to reload.
+5. Adjust changes one occurrence's due date or expected amount. History searches bill names and filters payment status and due dates. Archive stops future scheduling while retaining missed and paid records.
+
+The paid total sums actual payments associated with a bucket's due dates; outstanding sums expected amounts of unpaid occurrences. Paying a different amount settles that occurrence, so expected need not equal paid plus outstanding.
+
+## Recurrence rules
+
+Presets include weekly, fortnightly, monthly, quarterly, annually, twice monthly, and last chosen weekday. Custom rules support one time; every N days/weeks/months/years; selected weekdays; multiple monthly dates; selected months; and first through fifth or last chosen weekday of a month.
+
+Month-end dates clamp without losing their anchor: January 31 → February 28 → March 31. Annual February 29 bills use February 28 in non-leap years. Multiple monthly dates that clamp to the same date produce one occurrence. A fifth weekday absent from a month is skipped. Weekends and holidays are never shifted automatically.
+
+Early, late, and missed payments do not move recurrence anchors. Bill edits preserve today's and earlier records and paid history, and apply future changes to unpaid occurrences. Explicit occurrence overrides remain records. Archival preserves today's and earlier unpaid occurrences and paid records while removing future unpaid projections.
+
+## Maintain
+
+```sh
+~/.local/bin/paybillz backup
+~/.local/bin/paybillz restore /absolute/path/to/backup
+# In the original source checkout, fetch the new release first:
+git pull --ff-only
+~/.local/bin/paybillz update --source "$PWD"
+~/.local/bin/paybillz uninstall
+```
+
+Updates back up before migrations and roll back failed migrations. Uninstall preserves data and backups. Do not run lifecycle commands concurrently. See [operations](ops-delivery/OPERATIONS.md) and [contributing](CONTRIBUTING.md). Do not include personal data, SQLite files, or configuration secrets in issues or contributions.
