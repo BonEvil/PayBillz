@@ -188,14 +188,109 @@ def webapp_port():
     return port
 
 
+def webapp_clients():
+    """Query window lifecycle without inspecting page contents."""
+    result = subprocess.run(['hyprctl', 'clients', '-j'], capture_output=True, text=True, check=True, timeout=5)
+    return json.loads(result.stdout)
+
+
+def focus_webapp_window(address):
+    if not re.fullmatch(r'0x[0-9a-fA-F]+', address):
+        fail('Invalid PayBillz window address.')
+    # Hyprland's Lua config uses dispatcher objects; older configs use strings.
+    expression = 'hl.dsp.focus({ window = "address:' + address + '" })'
+    result = subprocess.run(['hyprctl', 'dispatch', expression], capture_output=True, text=True, timeout=5)
+    if result.returncode:
+        subprocess.run(['hyprctl', 'dispatch', 'focuswindow', 'address:' + address], check=True, capture_output=True, text=True, timeout=5)
+
+
+def managed_webapp():
+    """Keep the server alive exactly while the dedicated Omarchy app is open."""
+    import fcntl
+    installed()
+    browser = next((path for name in ('chromium', 'chromium-browser', 'google-chrome-stable', 'google-chrome', 'brave-browser', 'brave')
+                    if (path := shutil.which(name))), None)
+    if not browser or not shutil.which('hyprctl'):
+        fail('Omarchy app lifecycle requires Chromium (or Chrome/Brave) and hyprctl. Use paybillz start for browser-only access.')
+    HOME.mkdir(parents=True, exist_ok=True)
+    window_state = HOME / 'webapp-window.json'
+    with (HOME / 'webapp.lock').open('a') as lock:
+        try:
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            # A second launcher click focuses the existing app, never stops its server.
+            if window_state.exists():
+                saved = json.loads(window_state.read_text())
+                clients = webapp_clients()
+                if any(c.get('address') == saved.get('address') and c.get('pid') == saved.get('pid') for c in clients):
+                    focus_webapp_window(saved['address'])
+            print('PayBillz is already opening or open.')
+            return
+        window_state.unlink(missing_ok=True)
+        profile = HOME / 'webapp-profile'
+        profile.mkdir(mode=0o700, exist_ok=True)
+        profile.chmod(0o700)
+        start()
+        proc = None
+        previous_handlers = {}
+        def interrupted(signum, frame):
+            raise KeyboardInterrupt
+        try:
+            for sig in (signal.SIGTERM, signal.SIGINT):
+                previous_handlers[sig] = signal.signal(sig, interrupted)
+            url = f'http://127.0.0.1:{webapp_port()}/'
+            with (HOME / 'webapp.log').open('ab') as log:
+                proc = subprocess.Popen([
+                    browser, f'--user-data-dir={profile}', '--no-first-run',
+                    '--no-default-browser-check', '--disable-background-mode',
+                    '--disable-session-crashed-bubble', f'--app={url}',
+                ], stdin=subprocess.DEVNULL, stdout=log, stderr=subprocess.STDOUT)
+            deadline = time.monotonic() + 30
+            address = None
+            while proc.poll() is None:
+                clients = webapp_clients()
+                owned = [c for c in clients if c.get('pid') == proc.pid]
+                if address is None:
+                    app = next((c for c in owned if c.get('initialClass', c.get('class', '')).startswith('chrome-127.0.0.1_')), None)
+                    if app:
+                        address = app['address']
+                        atomic_json(window_state, {'address': address, 'pid': proc.pid})
+                    elif time.monotonic() >= deadline:
+                        fail('PayBillz window did not open within 30 seconds; see webapp.log.')
+                elif not any(c.get('address') == address for c in owned):
+                    break
+                time.sleep(0.25)
+            if address is None:
+                fail('PayBillz browser exited before opening its window; see webapp.log.')
+        except KeyboardInterrupt:
+            pass
+        finally:
+            # Only our dedicated browser is terminated, never the regular browser.
+            try:
+                if proc is not None and proc.poll() is None:
+                    proc.terminate()
+                    try:
+                        proc.wait(timeout=10)
+                    except subprocess.TimeoutExpired:
+                        proc.kill()
+                        proc.wait(timeout=5)
+            finally:
+                window_state.unlink(missing_ok=True)
+                try:
+                    stop()
+                finally:
+                    for sig, handler in previous_handlers.items():
+                        signal.signal(sig, handler)
+
+
 def open_app():
-    start()
-    url = f'http://127.0.0.1:{webapp_port()}/'
-    launcher = shutil.which('omarchy-launch-webapp')
-    if launcher:
-        run(launcher, url)
-    elif not webbrowser.open(url):
-        fail(f'No browser could be opened. Open {url} manually.')
+    if shutil.which('omarchy-launch-webapp'):
+        managed_webapp()
+    else:
+        start()
+        url = f'http://127.0.0.1:{webapp_port()}/'
+        if not webbrowser.open(url):
+            fail(f'No browser could be opened. Open {url} manually.')
 
 
 def desktop_argument(value):
@@ -214,7 +309,7 @@ def install_webapp():
         '/usr/bin/env', f'PAYBILLZ_HOME={HOME}', f'PAYBILLZ_BIN_DIR={BIN}',
         WRAPPER, 'open', '--port', port))
     run(installer, 'PayBillz', url, APP / 'bills/static/bills/pwa/icon-512.png', command)
-    print('PayBillz added to the Omarchy launcher. Opening it starts the local server automatically.')
+    print('PayBillz added to the Omarchy launcher. Opening it starts the server; closing its window stops the server.')
 
 
 def configure_path(profile_root=None):
@@ -495,6 +590,6 @@ def main():
 if __name__ == "__main__":
     try:
         main()
-    except (RuntimeError, OSError, subprocess.CalledProcessError, sqlite3.Error, json.JSONDecodeError) as exc:
+    except (RuntimeError, OSError, subprocess.CalledProcessError, subprocess.TimeoutExpired, sqlite3.Error, json.JSONDecodeError) as exc:
         print(f"paybillz: {exc}", file=sys.stderr)
         sys.exit(1)

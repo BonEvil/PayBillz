@@ -27,8 +27,8 @@ Or use `sh ops-delivery/install.sh --source /absolute/path/to/source` when the s
 | `paybillz start` | Start the foreground `manage.py runlocal` command as a background process; logs go to `~/.local/share/paybillz/server.log`. Repeated starts keep the existing process. |
 | `paybillz stop` | Send SIGTERM only to the PID whose command line matches this managed app and `runlocal`. A stale PID file is removed. |
 | `paybillz restart` | Stop and start the app, retaining its running port unless PAYBILLZ_PORT explicitly overrides it. Also starts a stopped app. |
-| `paybillz open [--port PORT]` | Start the local server if needed, then open an Omarchy web-app window or the default browser. |
-| `paybillz install-webapp` | Register PayBillz using the installed Omarchy web-app helper, with a local icon and automatic server startup on launch. On other desktops, use the browser PWA install action. |
+| `paybillz open [--port PORT]` | On Omarchy, start the server and a dedicated app window; closing that window stops the server. Elsewhere, open the default browser with manual server shutdown. |
+| `paybillz install-webapp` | Register PayBillz using the installed Omarchy web-app helper, with a local icon and server startup/shutdown tied to its window. On other desktops, use the browser PWA install action. |
 | `paybillz status` | Report whether the managed app is running and show its local address. |
 | `paybillz backup [DESTINATION]` | Make a consistent SQLite copy using Python's SQLite backup API and copy `config.json`. A unique directory under `data/backups/` is used by default. The destination must not exist. |
 | `paybillz restore BACKUP_DIR` | Check backup contents and SQLite integrity, stop the server, make a safety backup, replace database and config, then restart if previously running. |

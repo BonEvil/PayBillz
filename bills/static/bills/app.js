@@ -109,7 +109,7 @@ if (panel) {
       const eyebrow = document.createElement('span'); eyebrow.className = 'eyebrow'; eyebrow.textContent = 'Complete transaction';
       const row = link.closest('.transaction-row');
       const heading = document.createElement('h2'); heading.textContent = row.querySelector('.transaction-name').textContent;
-      const detail = document.createElement('p'); detail.className = 'muted'; detail.textContent = 'Due ' + row.querySelector('.due-date').textContent;
+      const detail = document.createElement('p'); detail.className = 'muted'; detail.textContent = (row.dataset.type === 'income' ? 'Scheduled payday ' : 'Due ') + row.querySelector('.due-date').textContent;
       const badge = document.createElement('span'); badge.className = 'large-icon'; badge.append(row.querySelector('.row-icon svg').cloneNode(true));
       panel.replaceChildren(eyebrow, badge, heading, detail, form);
       document.querySelectorAll('.is-selected').forEach(row => row.classList.remove('is-selected'));

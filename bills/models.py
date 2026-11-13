@@ -1,4 +1,5 @@
 from django.db import models
+from django.urls import reverse
 from django.core.validators import MinValueValidator
 from django.core.validators import URLValidator
 from decimal import Decimal
@@ -43,6 +44,8 @@ class Bill(models.Model):
         return self.name
 
 class PaySchedule(models.Model):
+    archived = models.BooleanField(default=False)
+    rule_effective_from = models.DateField(null=True, blank=True)
     category = models.ForeignKey(Category, null=True, blank=True, on_delete=models.PROTECT, related_name="income_schedules")
     icon_override = models.CharField(max_length=32, choices=icon_choices, blank=True)
 
@@ -63,7 +66,8 @@ class PaySchedule(models.Model):
     recurrence = models.JSONField()
 
 class Occurrence(models.Model):
-    bill = models.ForeignKey(Bill, on_delete=models.PROTECT, related_name='occurrences')
+    bill = models.ForeignKey(Bill, null=True, blank=True, on_delete=models.PROTECT, related_name='occurrences')
+    pay_schedule = models.ForeignKey(PaySchedule, null=True, blank=True, on_delete=models.PROTECT, related_name='occurrences')
     original_due = models.DateField()
     due_date = models.DateField()
     name = models.CharField(max_length=160)
@@ -73,8 +77,24 @@ class Occurrence(models.Model):
     payment_revision = models.PositiveIntegerField(default=0)
 
     class Meta:
-        constraints = [models.UniqueConstraint(fields=['bill', 'original_due'], name='unique_bill_original_due')]
+        constraints = [
+            models.UniqueConstraint(fields=['bill', 'original_due'], name='unique_bill_original_due'),
+            models.UniqueConstraint(fields=['pay_schedule', 'original_due'], name='unique_income_original_due'),
+            models.CheckConstraint(condition=(models.Q(bill__isnull=False, pay_schedule__isnull=True) | models.Q(bill__isnull=True, pay_schedule__isnull=False)), name='occurrence_exactly_one_source'),
+        ]
         ordering = ['due_date', 'pk']
+
+    @property
+    def is_income(self):
+        return self.pay_schedule_id is not None
+
+    @property
+    def source(self):
+        return self.pay_schedule if self.is_income else self.bill
+
+    @property
+    def source_edit_url(self):
+        return reverse('bills:schedule_edit' if self.is_income else 'bills:bill_edit', args=[self.pay_schedule_id if self.is_income else self.bill_id])
 
 class Payment(models.Model):
     occurrence = models.OneToOneField(Occurrence, on_delete=models.PROTECT, related_name='payment')
