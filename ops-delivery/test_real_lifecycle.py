@@ -54,6 +54,7 @@ def rows(db):
 def main():
     if sys.version_info < (3, 12):
         raise SystemExit('Python 3.12+ is required (Django 6.1.3 declares Requires-Python >=3.12)')
+    call([sys.executable, ROOT / 'ops-delivery/test_commands.py'], os.environ.copy())
     with tempfile.TemporaryDirectory(prefix='paybillz-real-lifecycle-') as temp:
         root = Path(temp)
         source = root / 'source'
@@ -63,16 +64,29 @@ def main():
         env = os.environ.copy()
         env.update(PAYBILLZ_HOME=str(home), PAYBILLZ_BIN_DIR=str(bin_dir),
                    PAYBILLZ_PORT=str(port), PAYBILLZ_DATA_DIR=str(home / 'data'))
-        installer = ['sh', source / 'ops-delivery/install.sh', '--source', source]
+        env.update(PAYBILLZ_REPOSITORY=str(source), PAYBILLZ_REF='main')
+        call(['git', 'init', '-b', 'main', source], env)
+        call(['git', '-C', source, 'add', '.'], env)
+        commit = ['git', '-C', source, '-c', 'user.name=Test', '-c', 'user.email=test@example.invalid', 'commit', '-am']
+        call(commit + ['Initial test source'], env)
+        installer = ['sh', source / 'install.sh', '--no-path']
         cmd = bin_dir / 'paybillz'
         db = home / 'data/db.sqlite3'
         try:
             call(installer, env)
             call(installer, env)  # idempotent rerun
+            remote = subprocess.run(['sh', '-s', '--', '--no-path'], input=(source / 'install.sh').read_text(), text=True, capture_output=True, env=env)
+            assert remote.returncode == 0, remote.stdout + remote.stderr
             assert cmd.is_file() and (home / 'app/.venv/bin/python').is_file()
             assert json.loads((home / 'data/config.json').read_text())['secret_key']
             call([cmd, 'start'], env)
             http_ok(port)
+            assert 'running' in call([cmd, 'status'], env).stdout
+            prior_pid = (home / 'server.pid').read_text()
+            restart_env = {k:v for k,v in env.items() if k != 'PAYBILLZ_PORT'}
+            call([cmd, 'restart'], restart_env)
+            http_ok(port)
+            assert (home / 'server.pid').read_text() != prior_pid
             assert (home / 'server.pid').is_file()
             seed = '''from datetime import date
 from decimal import Decimal
@@ -99,20 +113,22 @@ Payment.objects.create(occurrence=o, amount=Decimal("1200.00"), paid_date=date(2
             assert rows(db) == baseline
             assert (home / 'data/config.json').read_bytes() == config_before
             (source / 'version.txt').write_text('updated\n')
-            call([cmd, 'update'], env)
+            call(['git', '-C', source, 'add', 'version.txt'], env)
+            call(commit + ['Update test version'], env)
+            call([cmd, 'update'], restart_env)
             assert (home / 'app/version.txt').read_text() == 'updated\n'
             http_ok(port)
             assert rows(db) == baseline
-            bad_migration = source / 'bills/migrations/0003_fail.py'
+            bad_migration = source / 'bills/migrations/0004_fail.py'
             bad_migration.write_text('''from django.db import migrations
 def fail(apps, schema_editor):
     raise RuntimeError("intentional migration failure")
 class Migration(migrations.Migration):
-    dependencies = [("bills", "0002_bill_details_revision")]
+    dependencies = [("bills", "0003_alter_payschedule_options_and_more")]
     operations = [migrations.RunPython(fail)]
 ''')
-            call([cmd, 'update'], env, expected=1)
-            assert not (home / 'app/bills/migrations/0003_fail.py').exists()
+            call([cmd, 'update', '--source', source], env, expected=1)
+            assert not (home / 'app/bills/migrations/0004_fail.py').exists()
             assert (home / 'app/version.txt').read_text() == 'updated\n'
             http_ok(port)
             assert rows(db) == baseline

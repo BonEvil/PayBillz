@@ -4,16 +4,35 @@ An MIT-licensed, single-user recurring bill planner that runs on your own comput
 
 ## Install and run
 
-Requires Python 3.12+ with venv/pip, a POSIX shell and ps. Linux and macOS use the same installer; Windows runs it inside WSL. See [operations](ops-delivery/OPERATIONS.md) for prerequisites, platform evidence, recovery, and custom paths.
+Requires Python 3.12+ with venv/pip, Git, a POSIX shell and ps. Linux and macOS use the same installer; Windows runs it inside WSL. See [operations](ops-delivery/OPERATIONS.md) for prerequisites, platform evidence, recovery, and custom paths.
+
+Install directly from the public repository:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/BonEvil/PayBillz/main/install.sh | sh
+```
+
+Or run the installer from a checkout:
 
 ```sh
 git clone https://github.com/BonEvil/PayBillz.git
 cd PayBillz
-sh ops-delivery/install.sh
-~/.local/bin/paybillz start
+./install.sh
 ```
 
-Open http://127.0.0.1:8765/. The server binds only to IPv4 loopback. Use `~/.local/bin/paybillz stop` to stop it. Application files live in `~/.local/share/paybillz/app`; SQLite and configuration live separately in `~/.local/share/paybillz/data`. Keep the source checkout for future updates. The application works offline after installation; installation and updates need access to the pinned Python packages.
+The installer creates `~/.local/bin/paybillz` and adds its directory to bash, zsh, or POSIX-shell startup configuration without replacing existing settings. Open a new terminal afterward, or run the `export PATH=...` command printed by the installer, then:
+
+```sh
+paybillz start
+paybillz status
+paybillz restart
+paybillz stop
+paybillz update
+```
+
+Open http://127.0.0.1:8765/. The server binds only to IPv4 loopback. Application files live in `~/.local/share/paybillz/app`; SQLite and configuration live separately in `~/.local/share/paybillz/data`. `paybillz update` downloads the latest `main` from BonEvil/PayBillz, backs up your data, installs dependencies and migrations, and restarts the app if it was running. No retained source checkout is needed. Download failures leave the running app untouched; migration failures restore the prior app and data.
+
+Use `sh install.sh --no-path` to leave shell startup files untouched. Other shells receive instructions to add the command directory to PATH. The application works offline after installation; downloading and updating require access to GitHub and pinned Python packages.
 
 On first installation, `data/config.json` contains a generated secret and timezone `UTC`. Set `timezone` to your IANA local timezone (for example `America/New_York`) and restart before entering bills. All due dates and payment dates are calendar dates; today is evaluated in that configured timezone. Amounts use exact decimals, with two fractional digits; the MVP displays dollar amounts and has no currency conversion.
 
@@ -38,12 +57,12 @@ Early, late, and missed payments do not move recurrence anchors. Bill edits pres
 ## Maintain
 
 ```sh
-~/.local/bin/paybillz backup
-~/.local/bin/paybillz restore /absolute/path/to/backup
-# In the original source checkout, fetch the new release first:
-git pull --ff-only
-~/.local/bin/paybillz update --source "$PWD"
-~/.local/bin/paybillz uninstall
+paybillz backup
+paybillz restore /absolute/path/to/backup
+paybillz update
+# Developers may explicitly install a local source snapshot:
+paybillz update --source /absolute/path/to/checkout
+paybillz uninstall
 ```
 
 Updates back up before migrations and roll back failed migrations. Uninstall preserves data and backups. Do not run lifecycle commands concurrently. See [operations](ops-delivery/OPERATIONS.md) and [contributing](CONTRIBUTING.md). Do not include personal data, SQLite files, or configuration secrets in issues or contributions.
