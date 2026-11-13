@@ -78,13 +78,13 @@ def main():
                 assert db.execute("SELECT value FROM sample").fetchall() == [("before",)]
             assert json.loads((home / "data/config.json").read_text()) == {"version": 1}
             (source / "version.txt").write_text("v2\n")
-            call([cmd, "update"], env)
+            call([cmd, "update", "--source", source], env)
             assert (home / "app/version.txt").read_text() == "v2\n"
             with sqlite3.connect(db_path) as db:
                 assert db.execute("SELECT value FROM sample").fetchall() == [("before",)]
             assert (home / "server.pid").is_file()
             (source / "manage.py").write_text("import sys\nsys.exit(42)\n")
-            failed = subprocess.run([str(cmd), "update"], env=env, capture_output=True, text=True)
+            failed = subprocess.run([str(cmd), "update", "--source", str(source)], env=env, capture_output=True, text=True)
             assert failed.returncode != 0
             assert (home / "app/version.txt").read_text() == "v2\n"
             with sqlite3.connect(db_path) as db:

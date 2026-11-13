@@ -7,6 +7,8 @@ import os
 from pathlib import Path
 import re
 import shutil
+import shlex
+import tempfile
 import signal
 import socket
 import sqlite3
@@ -14,6 +16,7 @@ import subprocess
 import sys
 import time
 import uuid
+import webbrowser
 
 HOME = Path(os.environ.get("PAYBILLZ_HOME", "~/.local/share/paybillz")).expanduser().resolve()
 BIN = Path(os.environ.get("PAYBILLZ_BIN_DIR", "~/.local/bin")).expanduser().resolve()
@@ -23,6 +26,7 @@ STATE = HOME / "install-state.json"
 PID = HOME / "server.pid"
 WRAPPER = BIN / "paybillz"
 MANAGED = ".paybillz-managed"
+REPOSITORY = "https://github.com/BonEvil/PayBillz.git"
 
 
 def fail(message):
@@ -48,7 +52,7 @@ def atomic_json(path, obj):
 
 def state():
     if not STATE.is_file():
-        fail("PayBillz is not installed. Run ops-delivery/install.sh first.")
+        fail("PayBillz is not installed. Run install.sh from the repository first.")
     return json.loads(STATE.read_text(encoding="utf-8"))
 
 
@@ -157,6 +161,98 @@ def start():
         fail(f"Server did not listen on 127.0.0.1:{port} within 15 seconds; see {HOME / 'server.log'}")
     PID.write_text(f"{proc.pid} {port}\n")
     print(f"PayBillz started on http://127.0.0.1:{port}/ (PID {proc.pid})")
+
+
+def restart():
+    installed()
+    port = listen_port() if running_pid() else None
+    stop()
+    if port and 'PAYBILLZ_PORT' not in os.environ:
+        os.environ['PAYBILLZ_PORT'] = str(port)
+    start()
+
+
+def status():
+    installed()
+    pid = running_pid()
+    if pid:
+        print(f'PayBillz running at http://127.0.0.1:{listen_port()}/ (PID {pid})')
+    else:
+        print('PayBillz is stopped')
+
+
+def webapp_port():
+    port = str(listen_port()) if running_pid() else os.environ.get('PAYBILLZ_PORT', '8765')
+    if not port.isdecimal() or not 1 <= int(port) <= 65535:
+        fail('PAYBILLZ_PORT must be an integer from 1 to 65535')
+    return port
+
+
+def open_app():
+    start()
+    url = f'http://127.0.0.1:{webapp_port()}/'
+    launcher = shutil.which('omarchy-launch-webapp')
+    if launcher:
+        run(launcher, url)
+    elif not webbrowser.open(url):
+        fail(f'No browser could be opened. Open {url} manually.')
+
+
+def desktop_argument(value):
+    # Freedesktop Exec quoting (not shell quoting).
+    return '"' + ''.join('%%' if ch == '%' else chr(92) + ch if ch in ('"', '`', '$', chr(92)) else ch for ch in str(value)) + '"'
+
+
+def install_webapp():
+    installed()
+    installer = shutil.which('omarchy-webapp-install')
+    if not installer:
+        fail('Omarchy web-app installer was not found. Run paybillz start, then install PayBillz from your Chromium browser.')
+    port = webapp_port()
+    url = f'http://127.0.0.1:{port}/'
+    command = ' '.join(desktop_argument(arg) for arg in (
+        '/usr/bin/env', f'PAYBILLZ_HOME={HOME}', f'PAYBILLZ_BIN_DIR={BIN}',
+        WRAPPER, 'open', '--port', port))
+    run(installer, 'PayBillz', url, APP / 'bills/static/bills/pwa/icon-512.png', command)
+    print('PayBillz added to the Omarchy launcher. Opening it starts the local server automatically.')
+
+
+def configure_path(profile_root=None):
+    profile_root = profile_root or Path.home()
+    shell = Path(os.environ.get('SHELL', '/bin/sh')).name
+    if shell == 'zsh':
+        profiles = [Path(os.environ.get('ZDOTDIR', str(profile_root))) / '.zshrc']
+    elif shell == 'bash':
+        profiles = [profile_root / '.bashrc', profile_root / '.profile']
+    elif shell in ('sh', 'dash', 'ksh'):
+        profiles = [profile_root / '.profile']
+    else:
+        print(f'Add {BIN} to your shell PATH to use paybillz by name.')
+        return
+    line = 'export PATH=' + shlex.quote(str(BIN)) + ':"$PATH"'
+    block = '\n# PayBillz command\n' + line + '\n'
+    for profile in profiles:
+        contents = profile.read_text() if profile.exists() else ''
+        if line not in contents.splitlines():
+            with profile.open('a') as stream:
+                stream.write(block)
+    print('Open a new terminal to use paybillz, or run this in your current shell:')
+    print(line)
+
+
+def update(source=None):
+    installed()
+    if source:
+        install(source)
+        return
+    if not shutil.which('git'):
+        fail('Git is required for paybillz update. Install git, then retry; or use update --source DIRECTORY.')
+    repository = os.environ.get('PAYBILLZ_REPOSITORY', REPOSITORY)
+    ref = os.environ.get('PAYBILLZ_REF', 'main')
+    with tempfile.TemporaryDirectory(prefix='paybillz-update-') as temp:
+        checkout = Path(temp) / 'source'
+        run('git', 'clone', '--depth', '1', '--branch', ref, '--', repository, checkout)
+        install(checkout)
 
 
 def snapshot(source, destination):
@@ -293,6 +389,8 @@ def install(source):
     had_app = APP.exists()
     was_running = running_pid() is not None if had_app else False
     safety = None
+    if was_running and 'PAYBILLZ_PORT' not in os.environ:
+        os.environ['PAYBILLZ_PORT'] = str(listen_port() or 8765)
     if had_app:
         stop()
         safety = backup()
@@ -354,20 +452,38 @@ def main():
     sub = parser.add_subparsers(dest="command", required=True)
     sub.add_parser("start")
     sub.add_parser("stop")
+    sub.add_parser("restart")
+    sub.add_parser("status")
+    p = sub.add_parser("open"); p.add_argument("--port", type=int, choices=range(1, 65536), metavar="PORT")
+    sub.add_parser("install-webapp")
     p = sub.add_parser("backup"); p.add_argument("destination", nargs="?")
     p = sub.add_parser("restore"); p.add_argument("source")
     p = sub.add_parser("install"); p.add_argument("--source", required=True)
+    p.add_argument("--configure-path", action="store_true")
+    p.add_argument("--no-path", action="store_true")
     p = sub.add_parser("update"); p.add_argument("--source")
     sub.add_parser("uninstall")
     args = parser.parse_args()
     if args.command == "install":
         install(args.source)
+        if args.configure_path and not args.no_path:
+            configure_path()
     elif args.command == "update":
-        install(args.source or state()["source"])
+        update(args.source)
     elif args.command == "start":
         start()
     elif args.command == "stop":
         installed(); stop()
+    elif args.command == "restart":
+        restart()
+    elif args.command == "status":
+        status()
+    elif args.command == "open":
+        if args.port is not None:
+            os.environ["PAYBILLZ_PORT"] = str(args.port)
+        open_app()
+    elif args.command == "install-webapp":
+        install_webapp()
     elif args.command == "backup":
         backup(args.destination)
     elif args.command == "restore":
