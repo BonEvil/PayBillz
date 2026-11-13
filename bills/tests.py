@@ -324,3 +324,36 @@ class InlineCategoryTests(TestCase):
         bill.refresh_from_db()
         self.assertEqual(bill.category,category)
         self.assertFalse(Category.objects.filter(name='Ignored').exists())
+
+class PWATests(TestCase):
+    def test_manifest_icons_and_service_worker(self):
+        import json
+        import struct
+        response = self.client.get('/manifest.webmanifest')
+        self.assertEqual(response['Content-Type'], 'application/manifest+json')
+        manifest = json.loads(b''.join(response.streaming_content))
+        self.assertEqual((manifest['id'], manifest['start_url'], manifest['scope']), ('/', '/', '/'))
+        self.assertEqual(manifest['display'], 'standalone')
+        self.assertEqual({icon['sizes'] for icon in manifest['icons']}, {'192x192', '512x512'})
+        for icon in manifest['icons']:
+            response = self.client.get(icon['src'])
+            data = b''.join(response.streaming_content)
+            self.assertEqual(data[:8], b'\x89PNG\r\n\x1a\n')
+            size = int(icon['sizes'].split('x')[0])
+            self.assertEqual(struct.unpack('>II',data[16:24]), (size,size))
+        response = self.client.get('/service-worker.js')
+        self.assertEqual(response['Content-Type'], 'application/javascript')
+        self.assertEqual(response['Cache-Control'], 'no-cache')
+        self.assertEqual(self.client.post('/service-worker.js').status_code,405)
+
+    def test_every_app_page_links_pwa_and_offline_is_data_free(self):
+        for url in ['/', '/bills/', '/bills/new/', '/schedule/', '/categories/', '/history/']:
+            response = self.client.get(url)
+            self.assertContains(response, 'rel="manifest"')
+            self.assertContains(response, '/pwa/register.js')
+            self.assertContains(response, 'Install app')
+        response = self.client.get('/pwa/offline.html')
+        content = b''.join(response.streaming_content).decode()
+        self.assertIn('paybillz start', content)
+        self.assertNotIn('<form', content)
+        self.assertEqual(self.client.get('/pwa/../../paybillz/settings.py').status_code,404)

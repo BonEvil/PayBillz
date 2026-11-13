@@ -1,9 +1,17 @@
 from django.urls import path
 from django.contrib.staticfiles.views import serve as static_serve
-from . import views
+from . import views, pwa
 
 app_name = 'bills'
 urlpatterns = [
+    path('manifest.webmanifest', pwa.asset, {'filename': 'manifest.webmanifest', 'content_type': 'application/manifest+json'}, name='manifest'),
+    path('service-worker.js', pwa.asset, {'filename': 'service-worker.js', 'content_type': 'application/javascript'}, name='service_worker'),
+    path('pwa/register.js', pwa.asset, {'filename': 'register.js', 'content_type': 'application/javascript'}, name='pwa_register'),
+    path('pwa/offline.html', pwa.asset, {'filename': 'offline.html', 'content_type': 'text/html'}, name='offline'),
+    path('pwa/icon-192.png', pwa.asset, {'filename': 'icon-192.png', 'content_type': 'image/png'}, name='icon_192'),
+    path('pwa/icon-512.png', pwa.asset, {'filename': 'icon-512.png', 'content_type': 'image/png'}, name='icon_512'),
+    path('apple-touch-icon.png', pwa.asset, {'filename': 'icon-192.png', 'content_type': 'image/png'}, name='apple_icon'),
+    path('favicon.ico', pwa.asset, {'filename': 'icon-192.png', 'content_type': 'image/png'}, name='favicon'),
     path('static/bills/site.css', lambda request: static_serve(request, 'bills/site.css', insecure=True), name='site_css'),
     path('', views.dashboard, name='dashboard'),
     path('schedule/', views.schedule_list, name='schedule'),

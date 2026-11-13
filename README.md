@@ -36,6 +36,24 @@ Use `sh install.sh --no-path` to leave shell startup files untouched. Other shel
 
 On first installation, `data/config.json` contains a generated secret and timezone `UTC`. Set `timezone` to your IANA local timezone (for example `America/New_York`) and restart before entering bills. All due dates and payment dates are calendar dates; today is evaluated in that configured timezone. Amounts use exact decimals, with two fractional digits; the MVP displays dollar amounts and has no currency conversion.
 
+## Install as a PWA or Omarchy web app
+
+After installing PayBillz locally, add it to Omarchy's application launcher:
+
+```sh
+paybillz install-webapp
+```
+
+This uses Omarchy's installed web-app helper and the bundled PayBillz icon. The launcher calls `paybillz open`, which starts the local server if needed and opens a frameless Omarchy browser window. It does not depend on a terminal remaining open or require a system-wide service. `paybillz open` also works directly; on other desktops it opens your default browser. A custom PAYBILLZ_HOME/BIN_DIR and the chosen port are retained in the generated launcher. Reinstall the launcher after changing the port.
+
+Alternatively, run `paybillz start`, visit `http://127.0.0.1:8765/` in Chromium, and use **Install app** when offered or the browser's install action. The manifest provides standalone display, app icons, and shortcuts for adding bills and viewing history. Loopback HTTP is supported for PWA installation; no certificate or network exposure is needed. Always use the same hostname and port for the installed app.
+
+Omarchy's **Install → Web App** menu can also use the name **PayBillz**, URL `http://127.0.0.1:8765/`, and icon URL `http://127.0.0.1:8765/pwa/icon-512.png`. Manual menu/browser installations require the server to be started separately; the `paybillz install-webapp` launcher starts it automatically. Remove its launcher with Omarchy's **Remove → Web App** menu. Removing the launcher does not delete your bills; uninstalling the backend does not automatically remove browser or Omarchy launchers.
+
+The app works without internet while the local server is running. If the server is unavailable after the first visit, a service worker shows a recovery page. Only the public offline page and icons are cached: bill data, forms, and payment actions are never cached or queued by the service worker. Offline edits and payments are not supported.
+
+References: [Omarchy web apps](https://github.com/omacom/omarchy/blob/quattro/manual/25-web-apps.md), [PWA installability](https://developer.mozilla.org/en-US/docs/Web/Progressive_web_apps/Guides/Making_PWAs_installable).
+
 ## Use
 
 1. Set a known payday and its recurrence under Pay schedule.

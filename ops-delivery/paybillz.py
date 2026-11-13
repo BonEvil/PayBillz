@@ -16,6 +16,7 @@ import subprocess
 import sys
 import time
 import uuid
+import webbrowser
 
 HOME = Path(os.environ.get("PAYBILLZ_HOME", "~/.local/share/paybillz")).expanduser().resolve()
 BIN = Path(os.environ.get("PAYBILLZ_BIN_DIR", "~/.local/bin")).expanduser().resolve()
@@ -178,6 +179,42 @@ def status():
         print(f'PayBillz running at http://127.0.0.1:{listen_port()}/ (PID {pid})')
     else:
         print('PayBillz is stopped')
+
+
+def webapp_port():
+    port = str(listen_port()) if running_pid() else os.environ.get('PAYBILLZ_PORT', '8765')
+    if not port.isdecimal() or not 1 <= int(port) <= 65535:
+        fail('PAYBILLZ_PORT must be an integer from 1 to 65535')
+    return port
+
+
+def open_app():
+    start()
+    url = f'http://127.0.0.1:{webapp_port()}/'
+    launcher = shutil.which('omarchy-launch-webapp')
+    if launcher:
+        run(launcher, url)
+    elif not webbrowser.open(url):
+        fail(f'No browser could be opened. Open {url} manually.')
+
+
+def desktop_argument(value):
+    # Freedesktop Exec quoting (not shell quoting).
+    return '"' + ''.join('%%' if ch == '%' else chr(92) + ch if ch in ('"', '`', '$', chr(92)) else ch for ch in str(value)) + '"'
+
+
+def install_webapp():
+    installed()
+    installer = shutil.which('omarchy-webapp-install')
+    if not installer:
+        fail('Omarchy web-app installer was not found. Run paybillz start, then install PayBillz from your Chromium browser.')
+    port = webapp_port()
+    url = f'http://127.0.0.1:{port}/'
+    command = ' '.join(desktop_argument(arg) for arg in (
+        '/usr/bin/env', f'PAYBILLZ_HOME={HOME}', f'PAYBILLZ_BIN_DIR={BIN}',
+        WRAPPER, 'open', '--port', port))
+    run(installer, 'PayBillz', url, APP / 'bills/static/bills/pwa/icon-512.png', command)
+    print('PayBillz added to the Omarchy launcher. Opening it starts the local server automatically.')
 
 
 def configure_path(profile_root=None):
@@ -417,6 +454,8 @@ def main():
     sub.add_parser("stop")
     sub.add_parser("restart")
     sub.add_parser("status")
+    p = sub.add_parser("open"); p.add_argument("--port", type=int, choices=range(1, 65536), metavar="PORT")
+    sub.add_parser("install-webapp")
     p = sub.add_parser("backup"); p.add_argument("destination", nargs="?")
     p = sub.add_parser("restore"); p.add_argument("source")
     p = sub.add_parser("install"); p.add_argument("--source", required=True)
@@ -439,6 +478,12 @@ def main():
         restart()
     elif args.command == "status":
         status()
+    elif args.command == "open":
+        if args.port is not None:
+            os.environ["PAYBILLZ_PORT"] = str(args.port)
+        open_app()
+    elif args.command == "install-webapp":
+        install_webapp()
     elif args.command == "backup":
         backup(args.destination)
     elif args.command == "restore":
