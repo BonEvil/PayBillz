@@ -1,6 +1,7 @@
 from datetime import date
 from decimal import Decimal
 from django import forms
+from django.db import transaction
 from django.core.exceptions import ValidationError
 from .models import Bill, Category, Occurrence, Payment, PaySchedule
 from paybillz.recurrence import validate_rule
@@ -66,6 +67,20 @@ class RuleFields(forms.Form):
         return {'kind':kind, 'every':rule.get('every',1), 'unit':rule.get('unit','months'), 'weekdays':[str(x) for x in rule.get('weekdays',[])], 'monthly_days':', '.join(str(x) for x in rule.get('days',[])), 'months':[str(x) for x in rule.get('months',[])], 'month_day':rule.get('day'), 'ordinal':str(rule.get('ordinal',1)), 'weekday':str(rule.get('weekday',0))}
 
 class BillForm(RuleFields, forms.ModelForm):
+    add_category = forms.BooleanField(required=False, label='Add a new category')
+    new_category = forms.CharField(max_length=100, required=False, label='New category', help_text='For example: Utility or Credit card.')
+    new_subcategory = forms.CharField(max_length=100, required=False, label='New subcategory (optional)', help_text='For example: Electric or Visa. Saved for reuse on other bills.')
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.order_fields(['name', 'category', 'add_category', 'new_category', 'new_subcategory', 'amount', 'start_date'])
+
+    def clean(self):
+        data = super().clean()
+        if data.get('add_category') and not data.get('new_category'):
+            self.add_error('new_category', 'Enter a category name.')
+        return data
+
     class Meta:
         model = Bill
         fields = ['name','category','amount','start_date','payment_link','notes']
@@ -78,8 +93,16 @@ class BillForm(RuleFields, forms.ModelForm):
             raise ValidationError('Use an http or https link.')
         return value
 
+    @transaction.atomic
     def save(self, commit=True):
         bill = super().save(commit=False)
+        if self.cleaned_data.get('add_category'):
+            name = self.cleaned_data['new_category']
+            subcategory = self.cleaned_data.get('new_subcategory', '')
+            category = Category.objects.filter(name__iexact=name, subcategory__iexact=subcategory).first()
+            if category is None:
+                category, _ = Category.objects.get_or_create(name=name, subcategory=subcategory)
+            bill.category = category
         bill.recurrence = self.cleaned_data['rule']
         if commit: bill.save()
         return bill

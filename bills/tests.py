@@ -284,3 +284,43 @@ class MultipleIncomeAndCategoryTests(TestCase):
         self.client.post(reverse('bills:category_edit', args=[category.pk]), {'name':'Utilities','subcategory':'Electricity'})
         self.assertContains(self.client.get(reverse('bills:bill_list')), 'Utilities → Electricity',count=2)
         self.assertEqual(self.client.post(reverse('bills:bill_new'), {'name':'Invalid','amount':'30','start_date':'2026-11-15','kind':'monthly','category':999999}).status_code,200)
+
+class InlineCategoryTests(TestCase):
+    def payload(self, **extra):
+        return {'name':'Electric bill','amount':'40','start_date':'2026-11-15','kind':'monthly',
+                'add_category':'on','new_category':' Utility ','new_subcategory':' Electric ', **extra}
+
+    def test_create_bill_and_reuse_inline_category(self):
+        from .models import Category
+        url = reverse('bills:bill_new')
+        self.assertEqual(self.client.post(url, self.payload()).status_code, 302)
+        category = Category.objects.get()
+        self.assertEqual((category.name, category.subcategory), ('Utility','Electric'))
+        self.assertEqual(Bill.objects.get().category, category)
+        self.assertEqual(self.client.post(url, self.payload(name='Other',new_category='utility',new_subcategory='electric')).status_code,302)
+        self.assertEqual(Category.objects.count(),1)
+        self.assertEqual(category.bills.count(),2)
+
+    def test_invalid_bill_creates_no_category_and_keeps_input(self):
+        from .models import Category
+        response = self.client.post(reverse('bills:bill_new'), self.payload(amount='invalid'))
+        self.assertEqual(response.status_code,200)
+        self.assertContains(response,'Utility')
+        self.assertFalse(Category.objects.exists())
+        self.assertFalse(Bill.objects.exists())
+        response = self.client.post(reverse('bills:bill_new'), self.payload(new_category=''))
+        self.assertContains(response,'Enter a category name.')
+        self.assertFalse(Category.objects.exists())
+
+    def test_edit_bill_adds_category_and_unchecked_uses_selected(self):
+        from .models import Category
+        category = Category.objects.create(name='Original')
+        bill = Bill.objects.create(name='Old',amount=10,start_date=date(2026,11,15),recurrence=RULE,category=category)
+        url = reverse('bills:bill_edit',args=[bill.pk])
+        self.assertEqual(self.client.post(url,self.payload(new_subcategory='',category=category.pk)).status_code,302)
+        bill.refresh_from_db()
+        self.assertEqual(str(bill.category),'Utility')
+        self.assertEqual(self.client.post(url,self.payload(add_category='',category=category.pk,new_category='Ignored')).status_code,302)
+        bill.refresh_from_db()
+        self.assertEqual(bill.category,category)
+        self.assertFalse(Category.objects.filter(name='Ignored').exists())
