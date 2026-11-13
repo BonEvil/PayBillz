@@ -112,3 +112,9 @@ Transaction rows show the earliest outstanding bill due date (including overdue 
 ### Icon library
 
 The icon picker includes nearly 300 bundled line icons. Use **Browse category** for money/work, home/utilities, transport/travel, food, health/fitness, family/pets, technology, entertainment, shopping, outdoors, or general symbols. Search accepts everyday terms such as dentist, gym, mortgage, pets, salary, and streaming. Category filters and search work together; the result count shows how many icons match. Existing selections and category inheritance are preserved. Selected Lucide assets are bundled locally with their upstream notices in `licenses/`; no external icon service is needed.
+
+### Omarchy window lifecycle
+
+`paybillz open` (also used by the Omarchy launcher) starts the server and a dedicated Chromium app profile, then watches its Hyprland window. Closing that window stops the server and closes the dedicated browser session, including any extra windows opened within that session. Ordinary browser windows are unaffected. The profile is stored under the PayBillz installation home as `webapp-profile`. Run `paybillz install-webapp` once to refresh an older launcher.
+
+For intentionally persistent server access, use `paybillz start` and open the local URL in your regular browser; stop it with `paybillz stop`. The browser-only fallback on systems without Omarchy keeps this manual lifecycle.
