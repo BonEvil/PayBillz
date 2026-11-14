@@ -193,7 +193,9 @@ def history(request):
     _sync(timezone.localdate())
     rows = Occurrence.objects.select_related('bill__category','pay_schedule__category','payment').all()
     q = request.GET.get('q','').strip()
-    status = request.GET.get('status','all')
+    status = request.GET.get('status','paid')
+    if status not in {'paid', 'unpaid', 'all'}:
+        status = 'paid'
     start = request.GET.get('from','')
     end = request.GET.get('to','')
     if q: rows = rows.filter(Q(name__icontains=q)|Q(bill__name__icontains=q)|Q(pay_schedule__name__icontains=q))
@@ -207,7 +209,8 @@ def history(request):
         if end: rows = rows.filter(due_date__lte=date.fromisoformat(end))
     except ValueError:
         end = ''
-    rows = rows.order_by('-due_date','-pk')[:500]
+    ordering = ('-payment__paid_date', '-pk') if status == 'paid' else ('-due_date', '-pk')
+    rows = rows.order_by(*ordering)[:500]
     return render(request,'bills/history.html',{'rows':rows,'q':q,'status':status,'start':start,'end':end})
 
 
