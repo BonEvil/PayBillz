@@ -1,7 +1,7 @@
 from datetime import date, timedelta
 from decimal import Decimal
 from django.db import IntegrityError, transaction
-from django.db.models import Q, Prefetch
+from django.db.models import Q, Prefetch, Case, When, Value, IntegerField
 from django.http import HttpResponseNotAllowed
 from django.views.decorators.http import require_GET
 from django.urls import reverse
@@ -194,6 +194,8 @@ def history(request):
     rows = Occurrence.objects.select_related('bill__category','pay_schedule__category','payment').all()
     q = request.GET.get('q','').strip()
     status = request.GET.get('status','all')
+    if status not in {'paid', 'unpaid', 'all'}:
+        status = 'all'
     start = request.GET.get('from','')
     end = request.GET.get('to','')
     if q: rows = rows.filter(Q(name__icontains=q)|Q(bill__name__icontains=q)|Q(pay_schedule__name__icontains=q))
@@ -207,7 +209,10 @@ def history(request):
         if end: rows = rows.filter(due_date__lte=date.fromisoformat(end))
     except ValueError:
         end = ''
-    rows = rows.order_by('-due_date','-pk')[:500]
+    # Keep completed records visible without hiding pending occurrences.
+    rows = rows.annotate(completion_group=Case(
+        When(payment__isnull=False, then=Value(0)), default=Value(1), output_field=IntegerField()))
+    rows = rows.order_by('completion_group', '-payment__paid_date', '-due_date', '-pk')[:500]
     return render(request,'bills/history.html',{'rows':rows,'q':q,'status':status,'start':start,'end':end})
 
 

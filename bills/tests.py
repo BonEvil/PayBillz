@@ -693,3 +693,23 @@ class IncomeCompletionTests(TestCase):
             for row in [self.row,bill_row]:
                 self.client.post(reverse('bills:payment_undo',args=[row.pk]),{'payment_revision':1})
                 self.assertContains(self.client.get('/'),f'data-occurrence="{row.pk}"')
+
+    def test_history_shows_all_with_completions_first(self):
+        self.complete()
+        bill_row=self.bill.occurrences.get(original_due=date(2026,11,16))
+        Payment.objects.create(occurrence=bill_row,amount=0,paid_date=date(2026,11,12))
+        response=self.client.get(reverse('bills:history'))
+        self.assertEqual(response.context['status'],'all')
+        self.assertEqual([r.pk for r in response.context['rows']][:2],[self.row.pk,bill_row.pk])
+        self.assertGreater(len(response.context['rows']),2)
+        completed=self.client.get(reverse('bills:history'),{'status':'paid'})
+        self.assertEqual([r.pk for r in completed.context['rows']],[self.row.pk,bill_row.pk])
+        self.assertContains(response,'$980.00 received')
+        self.assertContains(response,'newest completion first')
+        pending=self.client.get(reverse('bills:history'),{'status':'unpaid'})
+        self.assertTrue(pending.context['rows'])
+        self.assertTrue(all(not hasattr(r,'payment') for r in pending.context['rows']))
+        all_rows=self.client.get(reverse('bills:history'),{'status':'all'})
+        self.assertGreater(len(all_rows.context['rows']),2)
+        invalid=self.client.get(reverse('bills:history'),{'status':'invalid'})
+        self.assertEqual(invalid.context['status'],'all')
