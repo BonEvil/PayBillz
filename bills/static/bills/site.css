@@ -221,3 +221,13 @@ input:not([type=checkbox]),select,textarea{font-size:16px}
 .sidebar-bottom.account-controls{display:flex;flex-wrap:wrap;gap:8px;padding:8px 0 0;margin:0}
 .sidebar-bottom.account-controls>.local-dot,.sidebar-bottom.account-controls>small{display:none}
 }
+
+.auth-shell{min-height:100vh;min-height:100dvh;display:grid;place-items:center;padding:32px 20px}
+.auth-panel{width:100%;max-width:400px}
+.auth-brand{margin:0 0 36px;justify-content:center}
+.auth-heading{text-align:center;margin-bottom:24px}
+.auth-heading h1{font-size:26px;margin:0 0 8px}
+.auth-heading p{color:var(--muted);margin:0}
+.auth-form{margin:0;width:100%;padding:24px}
+.auth-form .button{width:100%;margin-top:8px}
+.auth-form p:first-of-type{margin-top:0}
