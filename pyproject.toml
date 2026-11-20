@@ -1,0 +1,11 @@
+[project]
+name = "paybillz"
+version = "0.2.0"
+requires-python = ">=3.12"
+dependencies = ["asgiref==3.13.0", "boto3==1.44.5", "botocore==1.44.5", "cffi==2.1.1", "cryptography==48.0.1", "dj-database-url==3.1.2", "django==6.1.3", "jmespath==1.1.0", "psycopg==3.3.9", "psycopg-binary==3.3.9", "pycparser==3.12", "python-dateutil==2.9.0.post0", "s3transfer==0.19.3", "six==1.17.0", "sqlparse==0.6.1", "typing-extensions==4.16.0", "urllib3==2.8.0"]
+
+[tool.uv]
+package = false
+
+[tool.vercel]
+entrypoint = "paybillz.wsgi:application"

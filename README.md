@@ -126,3 +126,58 @@ Income and bills appear together by scheduled date in the overview and Transacti
 History shows the scheduled date plus the actual received amount/date. **Correct** updates a completion; **Undo** reopens it. Repeated or stale submissions cannot create another completion. Recording an early or late receipt never shifts the recurring schedule. Income totals distinguish received and pending amounts; actual income is never included in expense-paid totals. Existing pay schedules produce pending income occurrences from their configured first included payday; the upgrade does not invent received-income records.
 
 Editing a pay schedule preserves completed and past income records. Archiving it stops future unpaid projections and removes it from future bucket boundaries, while retaining its history.
+
+## Hosted owner access
+
+Hosted deployments (`PAYBILLZ_HOSTED=1`, also automatically enabled on Vercel)
+require a single owner login. Local loopback installations remain login-free.
+There is no public registration. Bills, income, history, forms, and backup status
+require an active superuser. Create the owner with `python manage.py createsuperuser`
+after migrating the hosted database. Open **Settings** to update your username and recovery email (current password required), or choose **Change password**; an administrator can recover access with `python manage.py changepassword USERNAME`.
+These commands must use the hosted environment and database.
+
+Hosted configuration requires `DJANGO_SECRET_KEY`, a PostgreSQL `DATABASE_URL`,
+`PAYBILLZ_ALLOWED_HOSTS`, and `PAYBILLZ_TIMEZONE`. Missing cloud secrets/database
+configuration fails startup rather than opening an unauthenticated local database.
+HTTPS redirects, secure session/CSRF cookies, CSRF validation, owner authorization,
+and database-backed login throttling protect access. Private responses are not
+cached, and the PWA never caches financial data.
+
+Encrypted S3 backups run after authenticated requests when data has changed.
+Financial changes commit before upload; failed uploads stay pending in PostgreSQL
+and retry on a later request or an hourly recovery job. The recovery job creates
+no snapshot when nothing changed. It does not continuously keep the database awake.
+The **Backups** page reports pending work and the last successful snapshot.
+Configure `PAYBILLZ_BACKUP_KEY` (32 random bytes as hexadecimal),
+`PAYBILLZ_BACKUP_BUCKET`, `PAYBILLZ_BACKUP_REGION`, `PAYBILLZ_BACKUP_ROLE_ARN`,
+and `CRON_SECRET`. The Vercel production OIDC identity assumes an upload-only AWS
+role; no permanent AWS access keys belong in the application.
+
+Keep the encryption key separately from both the database and S3. To recover,
+download a snapshot using an administrator identity, set `PAYBILLZ_BACKUP_KEY`,
+and run `python manage.py restore_cloud_backup SNAPSHOT` against an empty,
+migrated database. Restore refuses to overwrite existing financial or owner data.
+Snapshots include the owner's password hash but exclude active sessions.
+
+### Password recovery email (AWS SES)
+
+Set a recovery email in **Settings** before relying on **Forgot password?** at
+sign-in. Reset links expire after 30 minutes, are single-use, and invalidate existing
+sessions when redeemed. The request screen gives the same confirmation for unknown
+addresses, non-owner accounts, delivery failures, and throttled requests. A shared
+limit permits five valid requests per 15 minutes for this single-owner application.
+
+Verify the sender domain in SES in `PAYBILLZ_EMAIL_REGION` (default `us-east-1`)
+and publish its DKIM DNS records. Set `PAYBILLZ_FROM_EMAIL` (default
+`PayBillz <no-reply@paybillz.app>`), `PAYBILLZ_PUBLIC_URL` (the canonical HTTPS
+application URL), and `PAYBILLZ_EMAIL_ROLE_ARN`. Grant that role only `ses:SendEmail`
+for the verified sender identity and restrict its trust to this Vercel project's
+production OIDC identity. It is separate from the upload-only backup role.
+No AWS access keys or SMTP passwords are stored in the app. If SES is still in
+its sandbox, recipient identities must also be verified or production sending
+access must be approved before password recovery can reach them.
+
+Reset URLs use the configured canonical origin rather than the request Host
+header. Delivery errors log only the exception class, never the address, reset
+link, or message contents. Administrative password recovery remains available via
+Django's `changepassword` command if email access is lost.

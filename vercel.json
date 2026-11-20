@@ -1,0 +1,6 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": "django",
+  "regions": ["iad1"],
+  "crons": [{"path": "/internal/backup/", "schedule": "17 * * * *"}]
+}

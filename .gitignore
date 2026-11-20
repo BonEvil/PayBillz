@@ -3,3 +3,7 @@ __pycache__/
 *.pyc
 *.sqlite3
 config.json
+
+.vercel/
+.env*
+staticfiles/

@@ -215,3 +215,23 @@ input:not([type=checkbox]),select,textarea{font-size:16px}
 #icon-picker>.section-heading{flex-shrink:0}
 #icon-picker .icon-grid{grid-template-columns:repeat(5,minmax(0,1fr));overflow-y:auto;min-height:0;padding:4px;margin:10px -4px 0}
 @media(max-width:650px){#icon-picker .icon-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
+
+/* Keep account actions available in the compact mobile header. */
+@media(max-width:650px){
+.sidebar-bottom.account-controls{display:flex;flex-wrap:wrap;gap:8px;padding:8px 0 0;margin:0}
+.sidebar-bottom.account-controls>.local-dot,.sidebar-bottom.account-controls>small{display:none}
+}
+
+.auth-shell{min-height:100vh;min-height:100dvh;display:grid;place-items:center;padding:32px 20px}
+.auth-panel{width:100%;max-width:400px}
+.auth-brand{margin:0 0 36px;justify-content:center}
+.auth-heading{text-align:center;margin-bottom:24px}
+.auth-heading h1{font-size:26px;margin:0 0 8px}
+.auth-heading p{color:var(--muted);margin:0}
+.auth-form{margin:0;width:100%;padding:24px}
+.auth-form .button{width:100%;margin-top:8px}
+.auth-form p:first-of-type{margin-top:0}
+.auth-link{text-align:center;margin-bottom:0}
+.auth-link a{color:var(--accent)}
+.settings-section{max-width:620px;margin-top:20px;padding:24px}
+.settings-section p{color:var(--muted)}
