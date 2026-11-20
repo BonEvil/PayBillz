@@ -231,3 +231,7 @@ input:not([type=checkbox]),select,textarea{font-size:16px}
 .auth-form{margin:0;width:100%;padding:24px}
 .auth-form .button{width:100%;margin-top:8px}
 .auth-form p:first-of-type{margin-top:0}
+.auth-link{text-align:center;margin-bottom:0}
+.auth-link a{color:var(--accent)}
+.settings-section{max-width:620px;margin-top:20px;padding:24px}
+.settings-section p{color:var(--muted)}

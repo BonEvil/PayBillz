@@ -80,3 +80,9 @@ STATICFILES_DIRS = []
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 SECURE_CONTENT_TYPE_NOSNIFF = True
 X_FRAME_OPTIONS = 'DENY'
+
+PAYBILLZ_PUBLIC_URL = os.environ.get('PAYBILLZ_PUBLIC_URL', 'https://paybillz.app')
+PAYBILLZ_EMAIL_REGION = os.environ.get('PAYBILLZ_EMAIL_REGION', 'us-east-1')
+PAYBILLZ_EMAIL_ROLE_ARN = os.environ.get('PAYBILLZ_EMAIL_ROLE_ARN', '')
+DEFAULT_FROM_EMAIL = os.environ.get('PAYBILLZ_FROM_EMAIL', 'PayBillz <no-reply@paybillz.app>')
+PASSWORD_RESET_TIMEOUT = 1800

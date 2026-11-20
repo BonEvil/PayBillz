@@ -4,6 +4,7 @@ from django.conf import settings
 from django.db import transaction
 from django.contrib.auth.views import redirect_to_login
 from django.http import HttpResponseForbidden
+from django.urls import resolve, Resolver404
 from django.utils.cache import add_never_cache_headers
 
 PUBLIC_PATHS = frozenset(['/login/', '/manifest.webmanifest', '/service-worker.js', '/pwa/register.js', '/pwa/offline.html', '/pwa/icon-192.png', '/pwa/icon-512.png', '/apple-touch-icon.png', '/favicon.ico', '/internal/backup/'])
@@ -11,7 +12,12 @@ PUBLIC_PATHS = frozenset(['/login/', '/manifest.webmanifest', '/service-worker.j
 class OwnerAccessMiddleware:
     def __init__(self, get_response): self.get_response = get_response
     def __call__(self, request):
-        if settings.HOSTED and request.path not in PUBLIC_PATHS and not request.path.startswith('/static/'):
+        try:
+            route = resolve(request.path_info).url_name
+        except Resolver404:
+            route = None
+        recovery = route in {'password_reset', 'password_reset_done', 'password_reset_confirm', 'password_reset_complete'}
+        if settings.HOSTED and not recovery and request.path not in PUBLIC_PATHS and not request.path.startswith('/static/'):
             if not request.user.is_authenticated:
                 response = redirect_to_login(request.get_full_path())
             elif not (request.user.is_active and request.user.is_superuser):
